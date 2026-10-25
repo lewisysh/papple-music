@@ -397,7 +397,8 @@ function autosize() {
 
 composer.urls.addEventListener("input", () => { autosize(); querySuggest(); });
 composer.urls.addEventListener("focus", querySuggest);
-composer.urls.addEventListener("blur", () => hideSuggest());
+// A tap on a suggestion blurs the box first on iOS; keep the list until the tap lands.
+composer.urls.addEventListener("blur", () => { if (!suggestPress) hideSuggest(); });
 composer.urls.addEventListener("keydown", (e) => {
   if (e.isComposing) return;
   const open = !suggest.box.classList.contains("hidden");
@@ -494,11 +495,28 @@ function chooseSuggest(i) {
   else navigate(itemPath(it));
 }
 
-// Keep focus in the box while picking with the mouse.
-suggest.box.addEventListener("pointerdown", (e) => e.preventDefault());
+// Keep focus in the box while picking with the mouse. Touch picks on pointerup:
+// iOS drops the keyboard on tap, and the resize can make the click miss or vanish.
+let suggestPress = null;
+suggest.box.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  const row = e.target.closest("[data-sg]");
+  suggestPress = row && e.pointerType !== "mouse" ? { i: Number(row.dataset.sg), x: e.clientX, y: e.clientY } : null;
+});
+suggest.box.addEventListener("pointerup", (e) => {
+  const press = suggestPress;
+  suggestPress = null;
+  if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) < 12) chooseSuggest(press.i);
+  else if (document.activeElement !== composer.urls) hideSuggest();
+});
+suggest.box.addEventListener("pointercancel", () => {
+  suggestPress = null;
+  if (document.activeElement !== composer.urls) hideSuggest();
+});
 suggest.box.addEventListener("click", (e) => {
   const row = e.target.closest("[data-sg]");
-  if (row) chooseSuggest(Number(row.dataset.sg));
+  // Touch taps were already handled on pointerup, which hid the list.
+  if (row && !suggest.box.classList.contains("hidden")) chooseSuggest(Number(row.dataset.sg));
 });
 suggest.box.addEventListener("pointermove", (e) => {
   const row = e.target.closest("[data-sg]");
