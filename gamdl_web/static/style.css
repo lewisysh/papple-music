@@ -1059,10 +1059,20 @@ body.panel-open .content { padding-right: 380px; }
 
 /* ---------- narrow screens: sidebar becomes a tab bar ---------- */
 @media (max-width: 760px) {
+  /* Full screen, the bar dips into the home-indicator area like the native tab bar;
+     when Safari shows its toolbar the inset is 0 and it keeps a small gap. */
+  :root { --tab-h: 64px; --tab-bottom: max(10px, calc(env(safe-area-inset-bottom) - 14px)); --tab-top: calc(var(--tab-bottom) + var(--tab-h)); }
   .app { grid-template-columns: 1fr; }
+  /* Content fades out under the floating bars instead of showing a hard edge. */
+  body::after {
+    content: ""; position: fixed; left: 0; right: 0; bottom: 0; z-index: 29; pointer-events: none;
+    height: calc(var(--tab-top) + 28px);
+    background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--bg) 70%, transparent) 55%, var(--bg));
+  }
+  body.fp-open::after { opacity: 0; }
   .sidebar {
-    position: fixed; top: auto; left: 14px; right: 14px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 40;
-    height: 64px; flex-direction: row; padding: 6px; border: 0; border-radius: 999px;
+    position: fixed; top: auto; left: 12px; right: 12px; bottom: var(--tab-bottom); z-index: 40;
+    height: var(--tab-h); flex-direction: row; padding: 6px; border: 0; border-radius: 999px;
     background: var(--liquid); box-shadow: var(--liquid-edge), var(--liquid-shadow);
     backdrop-filter: blur(28px) saturate(210%); -webkit-backdrop-filter: blur(28px) saturate(210%);
   }
@@ -1084,8 +1094,8 @@ body.panel-open .content { padding-right: 380px; }
   .sb-nav button.active .sb-icon { color: var(--accent); }
   .sb-label { flex: none; }
   .sb-badge { position: absolute; top: 0; left: calc(50% + 6px); min-width: 17px; line-height: 17px; font-size: 10px; }
-  .content { padding: 24px 16px calc(110px + env(safe-area-inset-bottom)); }
-  body.has-player .content { padding-bottom: calc(180px + env(safe-area-inset-bottom)); }
+  .content { padding: 24px 16px calc(var(--tab-top) + 28px); }
+  body.has-player .content { padding-bottom: calc(var(--tab-top) + 96px); }
   .page-head h1 { font-size: 28px; }
   .composer-options { gap: 12px; }
   .segmented { width: 100%; }
@@ -1105,7 +1115,7 @@ body.panel-open .content { padding-right: 380px; }
   .detail-head { grid-template-columns: 1fr; justify-items: center; text-align: center; gap: 18px; }
   .detail-meta { justify-content: center; }
   .player {
-    --pl-left: 0px; left: 14px; right: 14px; bottom: calc(84px + env(safe-area-inset-bottom)); height: 58px;
+    --pl-left: 0px; left: 12px; right: 12px; bottom: calc(var(--tab-top) + 8px); height: 58px;
     grid-template-columns: minmax(0, 1fr) auto; gap: 6px; max-width: none; margin: 0; padding: 0 12px 0 10px;
     cursor: pointer; transition: transform 0.45s cubic-bezier(0.3, 0.9, 0.4, 1), opacity 0.25s;
   }
@@ -1151,12 +1161,12 @@ body.panel-open .content { padding-right: 380px; }
   .search-section .card { scroll-snap-align: start; }
   /* Above the tab bar and, while music plays, above the mini player too. */
   .savebar {
-    left: 14px; right: 14px; z-index: 36; justify-content: flex-end; white-space: nowrap;
-    bottom: calc(84px + env(safe-area-inset-bottom)); transform: translateY(160px);
+    left: 12px; right: 12px; z-index: 36; justify-content: flex-end; white-space: nowrap;
+    bottom: calc(var(--tab-top) + 8px); transform: translateY(160px);
   }
   .savebar span { margin-right: auto; }
   .savebar.visible { transform: none; }
-  body.has-player .savebar { bottom: calc(152px + env(safe-area-inset-bottom)); }
+  body.has-player .savebar { bottom: calc(var(--tab-top) + 74px); }
 }
 
 /* ---------- full-screen player (phones) ---------- */
