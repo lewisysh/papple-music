@@ -39,11 +39,8 @@ Papple Music is a self-hosted web app that puts a polished, Apple Music–like i
 7. [How to use](#how-to-use)
 8. [Settings](#settings)
 9. [Docker and Synology NAS](#docker-and-synology-nas)
-10. [Custom branding](#custom-branding)
-11. [Security](#security)
-12. [FAQ](#faq)
-13. [Project layout](#project-layout)
-14. [Credits, disclaimer and license](#credits-disclaimer-and-license)
+10. [FAQ](#faq)
+11. [Credits, disclaimer and license](#credits-disclaimer-and-license)
 
 ---
 
@@ -260,46 +257,6 @@ Apple sign-in and cookies start empty. Step-by-step instructions: **[deploy/syno
 
 ---
 
-## Custom branding
-
-Create a `brand/` folder inside the data folder to change the logo and name on your own screen — no code changes, and nothing is committed to git.
-
-```
-~/.gamdl-web/brand/
-  brand.json      {"name": "My Music", "tagline": "Downloader"}
-  mark.svg        Sidebar icon (next to the name)
-  wordmark.svg    If present, shown instead of icon + name (single-color SVG)
-  icon-64.png     Browser tab icon
-  icon-128.png    Empty-state icon
-  icon-180.png    Home screen icon (iPhone)
-```
-
-Missing files fall back to the Papple logo. With Docker, put the folder at `./data/web/brand/`.
-
----
-
-## Security
-
-Papple Music is designed as a **personal, local tool**.
-
-- By default it only listens on `127.0.0.1`, so only this computer can reach it.
-- `Host`, `Origin` and `Sec-Fetch-Site` checks stop other websites from driving the API through your browser. Without a password, only `localhost` / `127.0.0.1` hosts are accepted, which also blocks DNS-rebinding attacks.
-- The settings API won't point ffmpeg or the cookie path at arbitrary programs or files.
-- Tokens and cookies are redacted from logs (including DEBUG), events and API responses.
-- "Open in Finder" only works inside the download folder.
-
-**To use it from other devices (e.g. your phone):**
-
-```bash
-GAMDL_WEB_PASSWORD='a-long-password' uv run papple-music --host 0.0.0.0
-```
-
-> [!CAUTION]
-> Always set a password with `--host 0.0.0.0` (the server refuses to start without one).
-> Don't expose it to the internet directly — keep it on your home network or behind a VPN such as Tailscale.
-
----
-
 ## FAQ
 
 <details>
@@ -337,33 +294,6 @@ Web pages can only open the AirPlay picker in Safari. In Chrome, use Cast instea
 
 Apple briefly rate-limits bursts of requests. Wait a minute and try again.
 </details>
-
----
-
-## Project layout
-
-```
-gamdl_web/
-  app.py           FastAPI routes, middleware (auth · origin checks), SSE
-  jobs.py          Download queue, per-track state, conversion and tag post-processing
-  runner.py        Settings → gamdl API / downloader setup
-  search.py        Catalog search, suggestions, detail pages, lyrics, library
-  formats.py       Per-song available qualities (wrapper HLS → catalog)
-  convert.py       ffmpeg conversion and tag copying (FLAC / WAV / MP3)
-  stream.py        Preview and music video cache (AAC / lossless / HLS)
-  motion.py        Motion album covers
-  prompts.py       gamdl's interactive questions → browser dialogs
-  wrapper.py       wrapper-v2 HTTP API proxy (tokens never reach the browser)
-  docker_ctl.py    Container control via the docker CLI
-  static/          Web UI (plain HTML / CSS / JS, no build step; i18n.js, hls.js)
-scripts/
-  setup-wrapper.sh     Build and start wrapper-v2
-  build-synology.sh    Build images for x86 NAS
-deploy/synology/       Compose file and guide for Synology
-compose.yaml           Wrapper (+ optional web UI) containers
-```
-
-When working on the UI, keep the server running, edit files in `gamdl_web/static/` and reload. Restart the server after changing Python code. UI text is written in Korean in the code and translated by `static/i18n.js`; add new phrases there.
 
 ---
 

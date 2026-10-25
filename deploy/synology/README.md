@@ -59,10 +59,6 @@ Thanks to `GAMDL_WEB_UMASK: "000"`, downloaded files can be renamed or deleted r
 | `data/web/` | Settings, cookies, playback cache |
 | `downloads/` | Your music |
 
-## Your own logo (optional)
-
-Put logo files in the project's `data/web/brand/` folder to change the logo on your NAS only. See "Custom branding" in the main README for file names.
-
 ## Notes
 
 - The container start/stop buttons on the **Docker** tab don't work inside a container. Use Container Manager instead.
