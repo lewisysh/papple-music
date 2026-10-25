@@ -1955,14 +1955,67 @@ function lyricsVisible() {
   return player.lyrics.length && sidePanelOpen() && !lyr.box.classList.contains("hidden");
 }
 
-function setLyricsY(y, instant) {
+// How far the lines may move: first line near the top, last line mid-box.
+function lyricsBounds() {
   const lines = $$(".ly-line", lyr.box);
-  if (!lines.length) return;
+  if (!lines.length) return null;
   const h = lyr.box.clientHeight;
   const last = lines[lines.length - 1];
-  lyr.y = Math.min(h * 0.4 - lines[0].offsetTop, Math.max(h * 0.5 - last.offsetTop - last.offsetHeight, y));
+  return { min: h * 0.5 - last.offsetTop - last.offsetHeight, max: h * 0.4 - lines[0].offsetTop };
+}
+
+function setLyricsY(y, instant) {
+  const b = lyricsBounds();
+  if (!b) return;
+  stopLyricsScroll();
+  lyr.y = Math.min(b.max, Math.max(b.min, y));
   lyr.box.classList.toggle("instant", instant);
   lyr.box.style.setProperty("--ly-y", `${lyr.y}px`);
+}
+
+// Manual scrolling: wheel and touch move a target and a frame loop eases the
+// lines toward it, coasts after a flick and springs back past either end, so
+// mice, trackpads and fingers all glide instead of stepping.
+const lyScroll = { target: 0, v: 0, raf: 0, touch: null };
+const LY_HOLD = 3500;
+
+function stopLyricsScroll() {
+  cancelAnimationFrame(lyScroll.raf);
+  lyScroll.raf = 0;
+  lyScroll.v = 0;
+}
+
+function lyricsFrame() {
+  const b = lyricsBounds();
+  if (!b) { lyScroll.raf = 0; return; }
+  if (!lyScroll.touch) {
+    if (lyScroll.v) {
+      lyScroll.target += lyScroll.v;
+      lyScroll.v *= 0.95;
+      if (Math.abs(lyScroll.v) < 0.15) lyScroll.v = 0;
+    }
+    const inside = Math.min(b.max, Math.max(b.min, lyScroll.target));
+    if (inside !== lyScroll.target) {
+      lyScroll.v *= 0.5;
+      lyScroll.target += (inside - lyScroll.target) * 0.18;
+      if (Math.abs(inside - lyScroll.target) < 0.5) lyScroll.target = inside;
+    }
+  }
+  lyr.y += (lyScroll.target - lyr.y) * (lyScroll.touch ? 0.6 : 0.2);
+  if (Math.abs(lyScroll.target - lyr.y) < 0.3) lyr.y = lyScroll.target;
+  lyr.box.style.setProperty("--ly-y", `${lyr.y}px`);
+  lyr.manualUntil = performance.now() + LY_HOLD;
+  const moving = lyScroll.touch || lyScroll.v || lyr.y !== lyScroll.target;
+  lyScroll.raf = moving ? requestAnimationFrame(lyricsFrame) : 0;
+}
+
+function startLyricsScroll() {
+  lyr.box.classList.add("instant");
+  lyr.manualUntil = performance.now() + LY_HOLD;
+  if (!lyScroll.raf) {
+    lyScroll.target = lyr.y;
+    lyScroll.raf = requestAnimationFrame(lyricsFrame);
+  }
 }
 
 function anchorLyrics(instant = false) {
@@ -1990,18 +2043,43 @@ function highlightLyric(time) {
 
 lyr.box.addEventListener("wheel", (e) => {
   e.preventDefault();
-  lyr.manualUntil = performance.now() + 2500;
-  setLyricsY(lyr.y - e.deltaY, true);
+  const b = lyricsBounds();
+  if (!b) return;
+  startLyricsScroll();
+  const dy = e.deltaY * (e.deltaMode === 1 ? 32 : e.deltaMode === 2 ? lyr.box.clientHeight : 1);
+  lyScroll.v = 0;
+  lyScroll.target = Math.min(b.max, Math.max(b.min, lyScroll.target - dy));
 }, { passive: false });
-let lyTouch = null;
-lyr.box.addEventListener("touchstart", (e) => { lyTouch = { y: e.touches[0].clientY, from: lyr.y }; }, { passive: true });
+lyr.box.addEventListener("touchstart", (e) => {
+  startLyricsScroll();
+  lyScroll.v = 0;
+  lyScroll.touch = { y: e.touches[0].clientY, t: performance.now(), v: 0 };
+}, { passive: true });
 lyr.box.addEventListener("touchmove", (e) => {
-  if (!lyTouch) return;
+  const tp = lyScroll.touch;
+  if (!tp) return;
   e.preventDefault();
-  lyr.manualUntil = performance.now() + 2500;
-  setLyricsY(lyTouch.from + e.touches[0].clientY - lyTouch.y, true);
+  const b = lyricsBounds();
+  const y = e.touches[0].clientY, now = performance.now();
+  let dy = y - tp.y;
+  // Past either end the lines resist, like a rubber band.
+  if (b && (lyScroll.target > b.max || lyScroll.target < b.min)) dy *= 0.35;
+  lyScroll.target += dy;
+  const frameV = dy / Math.max(1, now - tp.t) * 16;
+  tp.v = tp.v * 0.6 + frameV * 0.4;
+  tp.y = y;
+  tp.t = now;
 }, { passive: false });
-lyr.box.addEventListener("touchend", () => { lyTouch = null; });
+const endLyricsTouch = () => {
+  const tp = lyScroll.touch;
+  if (!tp) return;
+  lyScroll.touch = null;
+  // A flick keeps coasting; a finger that stopped before lifting doesn't.
+  lyScroll.v = performance.now() - tp.t < 80 ? tp.v : 0;
+  if (!lyScroll.raf) lyScroll.raf = requestAnimationFrame(lyricsFrame);
+};
+lyr.box.addEventListener("touchend", endLyricsTouch);
+lyr.box.addEventListener("touchcancel", endLyricsTouch);
 window.addEventListener("resize", () => { if (lyricsVisible()) anchorLyrics(true); });
 
 $("#sp-lyrics").addEventListener("click", (e) => {

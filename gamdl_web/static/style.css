@@ -833,7 +833,8 @@ img.loaded { opacity: 1 !important; }
   --pl-left: 236px; --pl-right: 0px;
   position: fixed; z-index: 35; bottom: 16px;
   left: calc(var(--pl-left) + 24px); right: calc(var(--pl-right) + 24px);
-  max-width: 1080px; margin: 0 auto; height: 64px;
+  /* About two thirds of the space beside the sidebar, centred. */
+  max-width: min(760px, max(520px, calc((100vw - var(--pl-left) - var(--pl-right) - 48px) * 0.67))); margin: 0 auto; height: 64px;
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px;
   container: player / inline-size;
   padding: 0 14px; border-radius: 999px;
@@ -983,7 +984,8 @@ body.panel-open .content { padding-right: 380px; }
 .ly-line:hover { opacity: 0.6; filter: none; }
 .ly-line.active { opacity: 1; filter: none; transform: translateY(var(--ly-y, 0px)) scale(1); }
 .ly-line:empty { min-height: 1em; }
-.lyrics.instant .ly-line { transition: transform 0.12s linear, opacity 0.4s ease, filter 0.3s ease; filter: none; }
+/* Hand scrolling: the frame loop moves the lines, so no transform transition. */
+.lyrics.instant .ly-line { transition: opacity 0.4s ease, filter 0.3s ease; filter: none; }
 .lyrics:not(.instant) .ly-line.past { opacity: 0.22; }
 
 /* ---------- context menu ---------- */
