@@ -1,8 +1,10 @@
 """Entry point of Papple Music.app (macOS).
 
-Runs the web server in a background thread, opens the browser and keeps a menu
-bar icon with a few shortcuts. Built into an app bundle by
-scripts/build-macapp.sh (PyInstaller); not used by `uv run papple-music`.
+A regular Dock app without windows: it runs the web server in a background
+thread and opens the UI in the browser. Clicking the Dock icon opens the UI
+again, the Dock and app menus have a few shortcuts, and quitting (⌘Q) stops
+the server. Built into an app bundle by scripts/build-macapp.sh (PyInstaller);
+not used by `uv run papple-music`.
 """
 
 from __future__ import annotations
@@ -34,19 +36,13 @@ def _korean() -> bool:
 
 KO = _korean()
 TEXT = {
+    "about": "Papple Music에 관하여" if KO else "About Papple Music",
     "open": "Papple Music 열기" if KO else "Open Papple Music",
     "folder": "다운로드 폴더 열기" if KO else "Open Download Folder",
     "login": "로그인 시 자동 실행" if KO else "Open at Login",
-    "starting": "시작하는 중…" if KO else "Starting…",
-    "running": "실행 중 · 127.0.0.1:{port}" if KO else "Running · 127.0.0.1:{port}",
-    "failed": "시작하지 못했습니다" if KO else "Couldn't start",
-    "quit": "종료" if KO else "Quit Papple Music",
+    "hide": "Papple Music 가리기" if KO else "Hide Papple Music",
+    "quit": "Papple Music 종료" if KO else "Quit Papple Music",
 }
-
-
-def _resource(name: str) -> Path:
-    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent / "packaging/macos"))
-    return base / name
 
 
 def _use_bundled_ffmpeg(data_dir: Path) -> None:
@@ -106,7 +102,14 @@ def _set_login_item(enabled: bool) -> None:
 def main() -> None:
     multiprocessing.freeze_support()
 
-    import rumps
+    from AppKit import (
+        NSApplication,
+        NSApplicationActivationPolicyRegular,
+        NSMenu,
+        NSMenuItem,
+        NSTerminateNow,
+    )
+    from Foundation import NSObject
 
     from .config import DATA_DIR, SettingsStore
 
@@ -133,57 +136,86 @@ def main() -> None:
     thread = threading.Thread(target=server.run, name="server", daemon=True)
     thread.start()
 
-    class PappleApp(rumps.App):
-        def __init__(self) -> None:
-            icon = _resource("menubar.png")
-            super().__init__("Papple Music", icon=str(icon) if icon.exists() else None, template=True, quit_button=None)
-            self.status = rumps.MenuItem(TEXT["starting"])
-            self.login = rumps.MenuItem(TEXT["login"], callback=self.toggle_login)
-            self.login.state = LAUNCH_AGENT.exists()
-            self.menu = [
-                rumps.MenuItem(TEXT["open"], callback=self.open_ui),
-                rumps.MenuItem(TEXT["folder"], callback=self.open_folder),
-                None,
-                self.status,
-                self.login,
-                None,
-                rumps.MenuItem(TEXT["quit"], callback=self.quit_app),
-            ]
-            self.opened = background
-            self.timer = rumps.Timer(self.watch, 0.5)
-            self.timer.start()
-
-        def watch(self, _timer) -> None:
+    def open_when_ready() -> None:
+        for _ in range(600):
             if server.started:
-                self.status.title = TEXT["running"].format(port=port)
-                if not self.opened:
-                    self.opened = True
-                    webbrowser.open(url)
-                self.timer.interval = 5
-            elif not thread.is_alive():
-                self.status.title = TEXT["failed"]
+                webbrowser.open(url)
+                return
+            if not thread.is_alive():
+                return
+            time.sleep(0.1)
 
-        def open_ui(self, _item) -> None:
+    class Delegate(NSObject):
+        def applicationDidFinishLaunching_(self, _note) -> None:
+            if not background:
+                threading.Thread(target=open_when_ready, daemon=True).start()
+
+        # Clicking the Dock icon of the running app opens the UI again.
+        def applicationShouldHandleReopen_hasVisibleWindows_(self, _app, _visible) -> bool:
+            webbrowser.open(url)
+            return True
+
+        def applicationDockMenu_(self, _app):
+            return self.dockMenu
+
+        def applicationShouldTerminate_(self, _app) -> int:
+            server.should_exit = True
+            thread.join(timeout=5)
+            return NSTerminateNow
+
+        def openUI_(self, _sender) -> None:
             webbrowser.open(url)
 
-        def open_folder(self, _item) -> None:
+        def openFolder_(self, _sender) -> None:
             folder = Path(SettingsStore().get().output_path).expanduser()
             folder.mkdir(parents=True, exist_ok=True)
             subprocess.run(["open", str(folder)], check=False)
 
-        def toggle_login(self, item) -> None:
-            _set_login_item(not item.state)
-            item.state = LAUNCH_AGENT.exists()
+        def toggleLogin_(self, sender) -> None:
+            _set_login_item(not LAUNCH_AGENT.exists())
+            for item in self.loginItems:
+                item.setState_(1 if LAUNCH_AGENT.exists() else 0)
 
-        def quit_app(self, _item) -> None:
-            server.should_exit = True
-            thread.join(timeout=5)
-            rumps.quit_application()
+    def item(title: str, action: str | None, key: str = "", target=None) -> NSMenuItem:
+        menu_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, action, key)
+        if target is not None:
+            menu_item.setTarget_(target)
+        return menu_item
 
-    PappleApp().run()
-    # Give the server a moment to close sockets if the menu bar loop ends another way.
-    server.should_exit = True
-    time.sleep(0.2)
+    app = NSApplication.sharedApplication()
+    app.setActivationPolicy_(NSApplicationActivationPolicyRegular)
+    delegate = Delegate.alloc().init()
+    delegate.loginItems = []
+
+    def shortcuts(menu: NSMenu, with_keys: bool) -> None:
+        menu.addItem_(item(TEXT["open"], "openUI:", "o" if with_keys else "", delegate))
+        menu.addItem_(item(TEXT["folder"], "openFolder:", "", delegate))
+        login = item(TEXT["login"], "toggleLogin:", "", delegate)
+        login.setState_(1 if LAUNCH_AGENT.exists() else 0)
+        delegate.loginItems.append(login)
+        menu.addItem_(login)
+
+    # App menu (the bold "Papple Music" menu next to the Apple menu).
+    app_menu = NSMenu.alloc().initWithTitle_("Papple Music")
+    app_menu.addItem_(item(TEXT["about"], "orderFrontStandardAboutPanel:"))
+    app_menu.addItem_(NSMenuItem.separatorItem())
+    shortcuts(app_menu, with_keys=True)
+    app_menu.addItem_(NSMenuItem.separatorItem())
+    app_menu.addItem_(item(TEXT["hide"], "hide:", "h"))
+    app_menu.addItem_(item(TEXT["quit"], "terminate:", "q"))
+    app_menu_item = NSMenuItem.alloc().init()
+    app_menu_item.setSubmenu_(app_menu)
+    main_menu = NSMenu.alloc().init()
+    main_menu.addItem_(app_menu_item)
+    app.setMainMenu_(main_menu)
+
+    # Right-click menu on the Dock icon (Quit is added by macOS).
+    dock_menu = NSMenu.alloc().init()
+    shortcuts(dock_menu, with_keys=False)
+    delegate.dockMenu = dock_menu
+
+    app.setDelegate_(delegate)
+    app.run()
 
 
 if __name__ == "__main__":

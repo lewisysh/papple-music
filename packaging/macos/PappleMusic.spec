@@ -10,8 +10,6 @@ VERSION = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["versi
 
 datas = [
     (str(ROOT / "gamdl_web/static"), "gamdl_web/static"),
-    (str(ROOT / "packaging/macos/menubar.png"), "."),
-    (str(ROOT / "packaging/macos/menubar@2x.png"), "."),
 ]
 binaries = []
 hiddenimports = ["gamdl_web.app", "uvicorn.lifespan.on", "uvicorn.protocols.http.h11_impl", "uvicorn.loops.asyncio"]
@@ -50,7 +48,6 @@ app = BUNDLE(
     info_plist={
         "CFBundleDisplayName": "Papple Music",
         "CFBundleShortVersionString": VERSION,
-        "LSUIElement": True,
         "LSMinimumSystemVersion": "12.0",
         "NSHumanReadableCopyright": "MIT License",
         "NSHighResolutionCapable": True,
