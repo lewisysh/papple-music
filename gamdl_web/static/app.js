@@ -3124,6 +3124,7 @@ $("#btn-docker-logs-refresh").addEventListener("click", refreshDockerLogs);
 // ---------------------------------------------------------------- settings
 
 const TEMPLATE_HELP = "변수: {album} {album_artist} {artist} {title} {track:02d} {disc} {date:%Y} {composer} {media_type} · '/'로 하위 폴더를 만듭니다.";
+const SINGLE_SONG_HELP = "곡 하나의 링크로 받을 때만 적용됩니다. 앨범·플레이리스트로 받으면 각자의 폴더에 저장됩니다. 변수: {artist} {title} {album} {album_artist} {date:%Y}";
 const PLAYLIST_HELP = "플레이리스트 링크로 받을 때만 적용됩니다. 변수: {playlist_title} {playlist_artist} {playlist_track:02d} {artist} {title} {album}";
 
 const TAG_LABELS = {
@@ -3186,6 +3187,10 @@ const SETTINGS_SCHEMA = [
   ] },
   { title: "오디오 메타데이터", help: "켠 태그만 파일에 넣습니다.", fields: [
     { key: "exclude_tags", type: "embed" },
+  ] },
+  { title: "한 곡 다운로드", help: SINGLE_SONG_HELP, fields: [
+    { key: "single_song_folder", label: "한 곡은 Songs 폴더에 따로 저장", type: "bool" },
+    { key: "single_song_template", label: "한 곡 경로", type: "text", wide: true },
   ] },
   { title: "플레이리스트", help: PLAYLIST_HELP, fields: [
     { key: "use_playlist_track_path", label: "플레이리스트 폴더에 따로 저장", type: "bool" },

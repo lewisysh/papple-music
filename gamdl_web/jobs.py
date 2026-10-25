@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import time
 import traceback
 import uuid
@@ -71,6 +72,8 @@ COLLECTION_TYPES = {
 }
 FINISHED = {"done", "error", "cancelled"}
 
+
+SINGLE_SONG_URL_RE = re.compile(r"/song/|[?&]i=\d")
 
 @dataclass
 class Track:
@@ -284,6 +287,8 @@ class JobManager:
         log = logger.bind(action=f"URL {url_index}/{len(job.urls)}")
         log.info(f'처리 중: "{url}"')
         downloader = session.downloader
+        # A link to one song (…/song/… or an album link with ?i=) goes to the Songs folder.
+        downloader.base.single_song_mode = bool(SINGLE_SONG_URL_RE.search(url))
         motion_done: set[str] = set()
         try:
             async for item in downloader.get_download_item_from_url(url):

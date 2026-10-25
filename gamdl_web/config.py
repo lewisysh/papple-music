@@ -133,8 +133,9 @@ class Settings(BaseModel):
     prd_path: str = ""
 
     # Templates
-    album_folder_template: str = _downloader_defaults["album_folder_template"]
-    compilation_folder_template: str = _downloader_defaults["compilation_folder_template"]
+    # Albums, playlists and single songs each get their own top-level folder.
+    album_folder_template: str = "Albums/{album_artist}/{album}"
+    compilation_folder_template: str = "Albums/Compilations/{album}"
     no_album_folder_template: str = _downloader_defaults["no_album_folder_template"]
     playlist_folder_template: str = _downloader_defaults["playlist_folder_template"]
     single_disc_file_template: str = _downloader_defaults["single_disc_file_template"]
@@ -144,8 +145,10 @@ class Settings(BaseModel):
     date_tag_template: str = _downloader_defaults["date_tag_template"]
     # Songs downloaded from a playlist URL go under this path instead of the
     # album templates (gamdl itself always files them by album).
-    use_playlist_track_path: bool = False
+    use_playlist_track_path: bool = True
     playlist_track_template: str = "Playlists/{playlist_title}/{playlist_track:02d} {title}"
+    single_song_folder: bool = True
+    single_song_template: str = "Songs/{artist} - {title}"
     exclude_tags: list[str] = []
     truncate: int | None = None
 

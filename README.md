@@ -159,7 +159,7 @@ Your browser opens <http://127.0.0.1:8765>. That's it! 🎉
 **3. Sign in** — searching and browsing work right away. To download and play, set up one of the [sign-in options](#signing-in-cookies-vs-wrapper).
 
 > [!TIP]
-> - Settings, cookies and caches live in `~/.gamdl-web/`; music is saved to `~/Music/Papple Music/` by default (change it in Settings).
+> - Settings, cookies and caches live in `~/.gamdl-web/`; music is saved to `~/Music/Papple Music/` by default (change it in Settings), with albums in `Albums/`, playlists in `Playlists/` and single songs in `Songs/`.
 > - The UI follows your browser language. Switch between **English** and **한국어** at the top of the Settings page.
 > - Next time, `uv run papple-music --open` is all you need.
 
@@ -251,8 +251,9 @@ Everything important in gamdl can be changed on the Settings page. The file is `
 | --- | --- |
 | Output format | Original (m4a) · FLAC · WAV · MP3 (choose the bitrate); keep the original after converting |
 | Codec priority | The order used when you don't pick a quality (e.g. ALAC → AAC) |
-| Folder / file names | gamdl templates such as `{album_artist}/{album}/{track:02d} {title}` |
-| Playlist path | Where songs downloaded from a playlist go |
+| Folder / file names | gamdl templates such as `Albums/{album_artist}/{album}/{track:02d} {title}` |
+| Playlist path | Where songs downloaded from a playlist go (default `Playlists/…`) |
+| Single song path | Where a song downloaded on its own goes (default `Songs/{artist} - {title}`), so one track doesn't get a one-song album folder |
 | Cover | Format (jpg · png · raw), size (up to 10000), save as a file |
 | Lyrics | Save synced lyrics (LRC), embed in tags |
 | Tags | Choose exactly which tags are written (cover included) |

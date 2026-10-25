@@ -93,17 +93,30 @@ class WebBaseDownloader(AppleMusicBaseDownloader):
         "no_album_file_template",
     )
 
-    def __init__(self, *args, playlist_track_template: str | None = None, **kwargs):
+    def __init__(
+        self,
+        *args,
+        playlist_track_template: str | None = None,
+        single_song_template: str | None = None,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         self.playlist_track_template = playlist_track_template
+        self.single_song_template = single_song_template
+        # Set by the job while it downloads a link to one song.
+        self.single_song_mode = False
 
     def get_final_path(self, tags, file_extension, playlist_tags):
-        if not (self.playlist_track_template and playlist_tags and playlist_tags.title):
+        if self.playlist_track_template and playlist_tags and playlist_tags.title:
+            template = self.playlist_track_template
+        elif self.single_song_mode and self.single_song_template and file_extension == ".m4a":
+            template = self.single_song_template
+        else:
             return super().get_final_path(tags, file_extension, playlist_tags)
 
-        # Reuse gamdl's formatting by pointing every template at the playlist one
+        # Reuse gamdl's formatting by pointing every template at the chosen one
         # for this call; nothing awaits in between, so no other item sees it.
-        folder, _, file = self.playlist_track_template.rpartition("/")
+        folder, _, file = template.rpartition("/")
         saved = {attr: getattr(self, attr) for attr in self._TEMPLATE_ATTRS}
         for attr in self._TEMPLATE_ATTRS:
             setattr(self, attr, folder if attr.endswith("folder_template") else file)
@@ -266,6 +279,7 @@ async def create_session(settings: Settings, prompts: WebPrompts) -> Session:
         playlist_track_template=(
             settings.playlist_track_template if settings.use_playlist_track_path else None
         ),
+        single_song_template=settings.single_song_template if settings.single_song_folder else None,
         interface=interface,
         output_path=str(Path(settings.output_path).expanduser()),
         temp_path=str(Path(settings.temp_path).expanduser()),
