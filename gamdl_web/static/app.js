@@ -189,7 +189,7 @@ function showPage(name) {
   }
   markLibraryPlaylist();
   updateSavebar();
-  if (name === "wrapper") { refreshWrapper(); refreshDocker(); }
+  if (name === "wrapper") { refreshWrapper(); refreshDocker(); refreshSetup(); }
   if (name === "settings") refreshCookies();
 }
 
@@ -2852,7 +2852,133 @@ async function checkAccount(useWrapper) {
   }
 }
 
-$("#btn-wrapper-refresh").addEventListener("click", () => { refreshWrapper(); refreshDocker(); });
+$("#btn-wrapper-refresh").addEventListener("click", () => { refreshWrapper(); refreshDocker(); refreshSetup(); });
+
+// ---------------------------------------------------------------- wrapper setup wizard
+
+const APKMIRROR_URL = "https://www.apkmirror.com/apk/apple/apple-music/";
+const SETUP_STEPS = {
+  source: "wrapper-v2 소스 받기",
+  libs: "Apple 라이브러리 꺼내기",
+  system: "시스템 파일 준비",
+  build: "이미지 빌드 (처음엔 10~15분)",
+  start: "컨테이너 시작",
+  health: "연결 확인",
+};
+const setup = { data: null, timer: 0, uploading: false };
+
+function setupStepRow(n, ok, title, body, actions = "") {
+  return `
+    <div class="setup-step${ok ? " ok" : ""}">
+      <span class="setup-num">${ok ? icon("checkmark") : n}</span>
+      <div class="setup-text"><b>${title}</b>${body ? `<small>${body}</small>` : ""}</div>
+      <div class="setup-actions">${actions}</div>
+    </div>`;
+}
+
+function renderSetup() {
+  const d = setup.data;
+  const box = $("#wrapper-setup");
+  const show = d && (!d.installed || ["running", "error", "done"].includes(d.state));
+  box.classList.toggle("hidden", !show);
+  if (!show) return;
+  const dockerOk = d.docker.installed && d.docker.running;
+  const apkOk = Boolean(d.apk?.ok);
+  const running = d.state === "running";
+  const docker = setupStepRow(1, dockerOk, "Docker (OrbStack)",
+    !d.docker.installed ? "무료 OrbStack(또는 Docker Desktop)을 설치하세요. 설치가 끝나면 자동으로 확인해요."
+      : !d.docker.running ? "Docker가 꺼져 있습니다. OrbStack을 실행하세요." : "실행 중",
+    !d.docker.installed ? '<a class="btn btn-gray" href="https://orbstack.dev/download" target="_blank" rel="noopener">OrbStack 받기</a>'
+      : !d.docker.running ? '<button class="btn btn-gray" data-setup="open-docker">OrbStack 열기</button>' : "");
+  const apkBody = setup.uploading ? "올리는 중…"
+    : apkOk ? esc(d.apk.name)
+      : d.apk ? `${esc(d.apk.name)} · ${esc(d.apk.message || "")}`
+        : d.apk_error ? esc(d.apk_error)
+          : "Apple Music APK 3.6.0-beta (1109)를 받아 다운로드 폴더에 두면 자동으로 찾아요. 파일을 여기로 끌어다 놓아도 돼요.";
+  const apk = setupStepRow(2, apkOk, "Apple Music APK", apkBody,
+    apkOk ? "" : `<a class="btn btn-gray" href="${APKMIRROR_URL}" target="_blank" rel="noopener">APKMirror 열기</a>
+      <button class="btn btn-gray" data-setup="pick">파일 선택</button>`);
+  let install;
+  if (running || d.state === "error" || d.state === "done" || d.state === "canceled") {
+    const label = running ? SETUP_STEPS[d.step] || "준비 중…" : d.state === "done" ? "설치 완료 · 아래에서 Apple ID로 로그인하세요"
+      : d.state === "canceled" ? "취소됨" : d.error;
+    install = `
+      <div class="setup-step${d.state === "done" ? " ok" : ""}${d.state === "error" ? " err" : ""}">
+        <span class="setup-num">${d.state === "done" ? icon("checkmark") : 3}</span>
+        <div class="setup-text"><b>설치</b><small>${esc(label || "")}</small>
+          <div class="setup-bar"><span style="width:${Math.round(d.progress * 100)}%"></span></div>
+          <details class="setup-log"${d.state === "error" ? " open" : ""}><summary>로그</summary><pre>${esc(d.log.slice(-80).join("\n"))}</pre></details>
+        </div>
+        <div class="setup-actions">${running ? '<button class="btn btn-gray" data-setup="cancel">취소</button>'
+          : d.state !== "done" ? '<button class="btn btn-primary" data-setup="start">다시 시도</button>' : ""}</div>
+      </div>`;
+  } else {
+    install = setupStepRow(3, false, "설치",
+      "소스를 받고 이미지를 빌드해 wrapper를 실행합니다. 처음엔 10~15분 걸려요.",
+      `<button class="btn btn-primary" data-setup="start"${dockerOk && apkOk ? "" : " disabled"}>설치 시작</button>`);
+  }
+  $("#setup-body").innerHTML = docker + apk + install;
+  const pre = $("#setup-body .setup-log pre");
+  if (pre) pre.scrollTop = pre.scrollHeight;
+}
+
+async function refreshSetup() {
+  clearTimeout(setup.timer);
+  try {
+    setup.data = await api("/api/wrapper/setup");
+    renderSetup();
+  } catch {
+    // The wizard is optional; the rest of the tab still works.
+  }
+  const visible = $("#tab-wrapper").classList.contains("active");
+  if (setup.data?.state === "running" || (visible && setup.data && !setup.data.installed)) {
+    setup.timer = setTimeout(refreshSetup, setup.data.state === "running" ? 1000 : 4000);
+  }
+  if (setup.data?.state === "done" && !state.setupDone) {
+    state.setupDone = true;
+    refreshWrapper();
+    refreshDocker();
+  }
+}
+
+async function uploadApk(file) {
+  if (!file) return;
+  setup.uploading = true;
+  renderSetup();
+  try {
+    const res = await fetch("/api/wrapper/setup/apk", { method: "POST", headers: { "X-Filename": encodeURIComponent(file.name) }, body: file });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+    toast(data.ok ? "APK를 확인했습니다" : data.message || "맞지 않는 APK입니다", data.ok ? "ok" : "err");
+  } catch (err) {
+    toast(err.message, "err");
+  } finally {
+    setup.uploading = false;
+    refreshSetup();
+  }
+}
+
+$("#setup-body").addEventListener("click", async (e) => {
+  const action = e.target.closest("[data-setup]")?.dataset.setup;
+  if (!action) return;
+  try {
+    if (action === "pick") $("#setup-apk-input").click();
+    else if (action === "open-docker") await api("/api/wrapper/setup/open-docker", { method: "POST" });
+    else if (action === "start") { state.setupDone = false; await api("/api/wrapper/setup/start", { method: "POST" }); }
+    else if (action === "cancel") await api("/api/wrapper/setup/cancel", { method: "POST" });
+  } catch (err) {
+    toast(err.message, "err");
+  }
+  refreshSetup();
+});
+$("#setup-apk-input").addEventListener("change", (e) => { uploadApk(e.target.files[0]); e.target.value = ""; });
+$("#wrapper-setup").addEventListener("dragover", (e) => { e.preventDefault(); $("#setup-body").classList.add("drop"); });
+$("#wrapper-setup").addEventListener("dragleave", () => $("#setup-body").classList.remove("drop"));
+$("#wrapper-setup").addEventListener("drop", (e) => {
+  e.preventDefault();
+  $("#setup-body").classList.remove("drop");
+  uploadApk(e.dataTransfer.files[0]);
+});
 
 // ---------------------------------------------------------------- docker
 

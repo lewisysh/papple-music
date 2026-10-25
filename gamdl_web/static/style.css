@@ -1269,3 +1269,34 @@ body.panel-open .content { padding-right: 380px; }
 
 .track.flash { animation: track-flash 2.4s ease; }
 @keyframes track-flash { 0%, 35% { background: color-mix(in srgb, var(--accent) 18%, transparent); } 100% { background: transparent; } }
+
+/* ---------- wrapper setup wizard ---------- */
+.setup { transition: box-shadow 0.15s; }
+.setup.drop { box-shadow: 0 0 0 2px var(--accent); }
+.setup-step { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: start; gap: 12px; padding: 14px 16px; }
+.setup-step + .setup-step { border-top: 1px solid var(--separator); }
+.setup-num {
+  display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+  background: var(--fill); color: var(--label-2); font-size: 12.5px; font-weight: 700;
+}
+.setup-step.ok .setup-num { background: #34c759; color: #fff; font-size: 13px; }
+.setup-step.err .setup-num { background: var(--accent); color: #fff; }
+.setup-text { min-width: 0; display: flex; flex-direction: column; gap: 3px; padding-top: 2px; }
+.setup-text b { font-size: 14px; font-weight: 600; }
+.setup-text small { font-size: 12.5px; color: var(--label-2); line-height: 1.45; overflow-wrap: anywhere; }
+.setup-step.err .setup-text small { color: var(--accent); }
+.setup-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.setup-actions .btn { white-space: nowrap; }
+.setup-actions .btn[disabled] { opacity: 0.45; pointer-events: none; }
+.setup-bar { height: 6px; margin-top: 8px; border-radius: 3px; background: var(--fill); overflow: hidden; }
+.setup-bar span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width 0.5s ease; }
+.setup-log { margin-top: 8px; font-size: 12px; }
+.setup-log summary { cursor: pointer; color: var(--label-2); }
+.setup-log pre {
+  max-height: 220px; overflow: auto; margin: 6px 0 0; padding: 10px; border-radius: 8px;
+  background: var(--fill-2); font: 11px/1.45 var(--font-mono, ui-monospace, monospace); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+@media (max-width: 760px) {
+  .setup-step { grid-template-columns: 26px minmax(0, 1fr); }
+  .setup-actions { grid-column: 2; justify-content: flex-start; }
+}

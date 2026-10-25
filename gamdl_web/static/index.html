@@ -148,6 +148,12 @@
           <p>ALAC 무손실을 받기 위한 복호화 서버입니다.</p>
         </header>
 
+        <div id="wrapper-setup" class="hidden">
+          <div class="group-head"><span>설치 마법사</span><span class="secondary">무손실(ALAC)이 필요할 때만 설치하세요</span></div>
+          <div class="group setup" id="setup-body"></div>
+          <input type="file" id="setup-apk-input" accept=".apk,.apkm,.xapk" hidden>
+        </div>
+
         <div class="group-head">
           <span>연결 상태</span>
           <button id="btn-wrapper-refresh" class="btn-link">새로고침</button>
@@ -171,18 +177,6 @@
           <pre id="docker-logs" class="logbox"></pre>
         </div>
 
-        <div class="group-head"><span>설치 가이드</span></div>
-        <div class="group guide">
-          <ol>
-            <li><a href="https://orbstack.dev" target="_blank" rel="noopener">OrbStack</a>(권장) 또는
-              <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener">Docker Desktop</a>을 설치하고 실행합니다.</li>
-            <li>Apple Music APK(<code>3.6.0-beta-1109</code>)를 준비합니다. 라이브러리는 wrapper-v2에 고정된 해시로 검증합니다.</li>
-            <li>프로젝트 폴더에서 설치 스크립트를 실행합니다. 첫 빌드는 10분 이상 걸릴 수 있어요.
-              <pre class="code">./scripts/setup-wrapper.sh ~/Downloads/AppleMusic_3.6.0-beta-1109.apk</pre></li>
-            <li>위의 <b>Apple ID</b>에서 로그인하고 2단계 인증 코드를 입력합니다.</li>
-            <li>다운로드 화면에서 <b>Wrapper</b>를 켜고 <b>무손실</b>을 고릅니다.</li>
-          </ol>
-        </div>
       </section>
 
       <!-- Settings -->

@@ -72,9 +72,9 @@ async def status(container: str) -> dict[str, Any]:
         result["state"] = state.get("Status")
         result["started_at"] = state.get("StartedAt")
         result["health"] = (state.get("Health") or {}).get("Status")
-    elif "No such object" in out or "No such container" in out:
+    elif "no such object" in out.lower() or "no such container" in out.lower():
         result["daemon"] = True
-        result["message"] = "컨테이너가 아직 없습니다. scripts/setup-wrapper.sh로 빌드하세요."
+        result["message"] = "컨테이너가 아직 없습니다. 위의 설치 마법사로 설치하세요."
     else:
         result["message"] = out.strip()[-500:] or "docker 데몬에 연결할 수 없습니다"
     return result

@@ -13,7 +13,7 @@ from dataclasses import fields
 from http.cookiejar import LoadError, MozillaCookieJar
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlsplit
+from urllib.parse import unquote, quote, urlsplit
 
 import httpx
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
@@ -43,6 +43,7 @@ from .convert import EXTRA_TAGS
 from .formats import FormatService
 from .motion import MotionError, MotionService
 from .stream import CACHE_DIR as STREAM_CACHE, StreamError, StreamService
+from .wrapper_setup import SetupError as WrapperSetupError, WrapperSetup
 from .events import EventBus, format_sse
 from .jobs import JobManager
 from .logs import configure_logging
@@ -70,6 +71,7 @@ async def lifespan(app: FastAPI):
     app.state.motion = MotionService(store, app.state.search)
     manager.motion = app.state.motion
     app.state.stream = StreamService(store)
+    app.state.wrapper_setup = WrapperSetup(store)
     warm = asyncio.create_task(app.state.search.warm())
     yield
     warm.cancel()
@@ -741,6 +743,51 @@ async def wrapper_2fa(request: Request, body: TwoFactorRequest):
 @app.post("/api/wrapper/logout")
 async def wrapper_logout(request: Request):
     return _wrapper_response(await wrapper.logout(_state(request).store.get()))
+
+
+# ---- wrapper setup wizard ---------------------------------------------------
+
+
+@app.get("/api/wrapper/setup")
+async def wrapper_setup_status(request: Request):
+    return await _state(request).wrapper_setup.status()
+
+
+@app.post("/api/wrapper/setup/apk")
+async def wrapper_setup_upload(request: Request):
+    """Raw APK upload (the file name comes in X-Filename) into the app's apk folder."""
+    name = unquote(request.headers.get("x-filename", "AppleMusic.apk"))
+    try:
+        return await _state(request).wrapper_setup.save_apk(name, request.stream())
+    except WrapperSetupError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.post("/api/wrapper/setup/start")
+async def wrapper_setup_start(request: Request):
+    try:
+        _state(request).wrapper_setup.start()
+    except WrapperSetupError as e:
+        raise HTTPException(400, str(e)) from e
+    return {"ok": True}
+
+
+@app.post("/api/wrapper/setup/cancel")
+async def wrapper_setup_cancel(request: Request):
+    await _state(request).wrapper_setup.cancel()
+    return {"ok": True}
+
+
+@app.post("/api/wrapper/setup/open-docker")
+async def wrapper_setup_open_docker():
+    """Launch OrbStack (or Docker Desktop) so its daemon starts."""
+    if sys.platform != "darwin":
+        raise HTTPException(400, "macOS에서만 지원합니다")
+    for app_name in ("OrbStack", "Docker"):
+        proc = await asyncio.create_subprocess_exec("open", "-a", app_name)
+        if await proc.wait() == 0:
+            return {"ok": True, "app": app_name}
+    raise HTTPException(404, "OrbStack 또는 Docker Desktop이 설치되어 있지 않습니다")
 
 
 @app.get("/api/docker")

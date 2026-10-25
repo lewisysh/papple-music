@@ -108,7 +108,7 @@ No terminal needed — Python, all libraries and ffmpeg are inside the app.
 > Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to "Papple Music".
 > (Or run `xattr -dr com.apple.quarantine "/Applications/Papple Music.app"` once.)
 
-The app uses the same data folder (`~/.gamdl-web/`) as the source version. ALAC lossless still needs the [wrapper](#setting-up-the-wrapper-alac-lossless) running in Docker; everything else works with just the app and your [cookies](#signing-in-cookies-vs-wrapper).
+The app uses the same data folder (`~/.gamdl-web/`) as the source version. Everything works with just the app and your [cookies](#signing-in-cookies-vs-wrapper); for ALAC lossless, the [setup wizard](#setting-up-the-wrapper-alac-lossless) in the Wrapper tab installs the wrapper for you.
 
 <details>
 <summary><b>Build the app yourself</b></summary>
@@ -182,21 +182,27 @@ Export `cookies.txt` from a browser signed in to music.apple.com with an extensi
 
 ## Setting up the wrapper (ALAC lossless)
 
-[wrapper-v2](https://github.com/glomatico/wrapper-v2) runs the Apple Music Android libraries in a container to decrypt ALAC streams.
+[wrapper-v2](https://github.com/glomatico/wrapper-v2) runs the Apple Music Android libraries in a container to decrypt ALAC streams. You only need it for lossless — search, streaming and AAC/Atmos downloads work without it.
 
-1. **Start Docker** — install and open [OrbStack](https://orbstack.dev) (recommended on macOS) or Docker Desktop.
-2. **Get the APK** — obtain the Apple Music Android APK **`3.6.0-beta-1109`** yourself *(it is not included here)*. Other versions are rejected by the hash check.
-3. **Run the setup script**
+### With the setup wizard (no terminal)
 
-   ```bash
-   ./scripts/setup-wrapper.sh ~/Downloads/AppleMusic_3.6.0-beta-1109.apk
-   ```
+Open the **Wrapper** tab. The setup wizard walks you through three steps:
 
-   It fetches wrapper-v2, extracts and verifies the libraries, builds the image and starts the container. The first build can take 10+ minutes.
-4. **Sign in** — on the **Wrapper** tab, sign in with your Apple ID and enter the 2FA code. The session is kept in `data/wrapper/`, so it survives restarts.
-5. **Done** — ALAC options now appear in the download window.
+1. **Docker** — install the free [OrbStack](https://orbstack.dev) (or Docker Desktop). The wizard detects it and can start it for you.
+2. **Apple Music APK** — get the Apple Music Android app **version `3.6.0-beta (1109)`** yourself (for example from APKMirror) and save it to your **Downloads** folder; the wizard finds and verifies it automatically. You can also drop the file onto the wizard. *(Papple Music doesn't include the APK — it's Apple's software.)*
+3. **Install** — press **Start install**. The wizard downloads wrapper-v2, extracts and verifies the libraries, builds the image and starts the container, with a progress bar and live log. The first build takes 10–15 minutes.
 
-> The wrapper only listens on `127.0.0.1:8080` (HTTP) and `127.0.0.1:10020` (decrypt). To change the ports, set `WRAPPER_HTTP_PORT` / `WRAPPER_DECRYPT_PORT` and update the addresses in Settings.
+Then sign in with your Apple ID (and 2FA code) right below. ALAC options now appear in the download window.
+
+<details>
+<summary><b>From the terminal (source checkout)</b></summary>
+
+```bash
+./scripts/setup-wrapper.sh ~/Downloads/AppleMusic_3.6.0-beta-1109.apk
+```
+
+The session is kept in `data/wrapper/`. The wrapper only listens on `127.0.0.1:8080` (HTTP) and `127.0.0.1:10020` (decrypt); set `WRAPPER_HTTP_PORT` / `WRAPPER_DECRYPT_PORT` to change them and update the addresses in Settings.
+</details>
 
 ---
 
