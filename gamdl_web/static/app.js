@@ -2390,6 +2390,53 @@ function jobHeader(job) {
   return { title, artwork: col?.artwork || tracks[0]?.artwork, sub: sub.filter(Boolean).join(" · ") };
 }
 
+const LOSSLESS_CODECS = new Set(["alac", "flac", "pcm_s16le", "pcm_s24le"]);
+const fmtKhz = (rate) => `${Number((rate / 1000).toFixed(1))}kHz`;
+
+// Lossless and Dolby get their logos, AAC stays text; the real format follows,
+// e.g. [lossless logo] 24bit · 96kHz, [Dolby logo] 768kbps, AAC 256kbps.
+function qualityTag(q) {
+  if (!q?.codec) return "";
+  if (LOSSLESS_CODECS.has(q.codec)) {
+    const hires = (q.bits || 16) > 16 && (q.rate || 0) > 48000;
+    const detail = [q.bits && `${q.bits}bit`, q.rate && fmtKhz(q.rate)].filter(Boolean).join(" · ");
+    return `<span class="qtag${hires ? " hires" : ""}" title="${hires ? "Hi-Res Lossless" : "Lossless"}">${MARKS.lossless}${detail ? `<span>${esc(detail)}</span>` : ""}</span>`;
+  }
+  if (q.codec === "eac3" || q.codec === "ac3" || q.codec === "atmos") {
+    return `<span class="qtag" title="Dolby Atmos">${MARKS.dolby}<span>${q.kbps ? `${q.kbps}kbps` : "Atmos"}</span></span>`;
+  }
+  const name = q.codec === "aac-he" ? "AAC-HE" : "AAC";
+  return `<span class="qtag"><b>${name}</b>${q.kbps ? `<span>${q.kbps}kbps</span>` : ""}</span>`;
+}
+
+// Before any song is finished, the quality picked in the download sheet.
+function plannedQuality(job) {
+  const label = job.overrides?.format_label || "";
+  let m = /^ALAC (\d+)\/([\d.]+)/.exec(label);
+  if (m) return { codec: "alac", bits: Number(m[1]), rate: Number(m[2]) * 1000 };
+  if (/^ALAC/.test(label)) return { codec: "alac" };
+  if (/^ATMOS|^DOLBY/i.test(label)) return { codec: "atmos" };
+  m = /^(AAC-HE|AAC) (\d+)/.exec(label);
+  if (m) return { codec: m[1].toLowerCase(), kbps: Number(m[2]) };
+  if (/^AAC-HE/.test(label)) return { codec: "aac-he" };
+  if (/^AAC/.test(label)) return { codec: "aac" };
+  if (label) return null;
+  const codec = (job.overrides?.song_codec_priority || state.settings?.song_codec_priority || [])[0];
+  return { alac: { codec: "alac" }, atmos: { codec: "atmos" }, aac: { codec: "aac" }, "aac-web": { codec: "aac" } }[codec] || null;
+}
+
+function jobQuality(job) {
+  if (job.overrides?.synced_lyrics_only) return '<span class="tag">가사</span>';
+  // A song this job really downloaded wins; files that were already there may
+  // be in another format, so they only count when nothing else is known.
+  const fresh = job.tracks.find((t) => t.status === "done" && t.quality?.codec);
+  const old = job.tracks.find((t) => t.quality?.codec);
+  const tag = qualityTag(fresh?.quality || plannedQuality(job) || old?.quality);
+  if (tag) return tag;
+  const text = jobTag(job);
+  return text ? `<span class="tag">${esc(text)}</span>` : "";
+}
+
 function jobTag(job) {
   if (job.overrides?.synced_lyrics_only) return "가사";
   if (job.overrides?.format_label) return job.overrides.format_label;
@@ -2504,7 +2551,7 @@ function renderTracks(job) {
         <span class="t-num">${t.total ? t.index : ""}</span>
         <div class="t-main">
           <div>
-            <div class="t-title">${esc(t.title)}</div>
+            <div class="t-title">${esc(t.title)}${qualityTag(t.quality)}</div>
             ${sub ? `<div class="t-sub${subCls}${live ? " live" : ""}" title="${esc(sub)}">${esc(sub)}</div>` : ""}
             ${t.status === "downloading" && t.progress != null ? `<div class="t-bar"><span style="width:${Math.round(t.progress * 100)}%"></span></div>` : ""}
           </div>
@@ -2568,8 +2615,7 @@ function renderJob(job) {
     art.dataset.src = wantArt;
     art.innerHTML = wantArt ? `<img src="${esc(wantArt)}" alt="" loading="lazy">` : icon("note");
   }
-  const tag = jobTag(job);
-  $(".job-title", el).innerHTML = esc(head.title) + (tag ? `<span class="tag">${esc(tag)}</span>` : "");
+  $(".job-title", el).innerHTML = esc(head.title) + jobQuality(job);
   $(".job-title", el).title = job.urls.join("\n");
   $(".job-sub", el).textContent = head.sub;
 

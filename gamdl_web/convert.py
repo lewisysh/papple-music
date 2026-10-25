@@ -63,6 +63,7 @@ def _probe_tags(path: str) -> dict:
         "sample_rate": str(getattr(info, "sample_rate", 0) or ""),
         "bits_per_raw_sample": str(getattr(info, "bits_per_sample", 0) or ""),
         "channels": getattr(info, "channels", None),
+        "bit_rate": str(getattr(info, "bitrate", 0) or ""),
     }
 
 
@@ -71,11 +72,46 @@ async def probe(path: str, ffprobe: str) -> dict:
         return await asyncio.to_thread(_probe_tags, path)
     out = await _run(
         ffprobe, "-v", "error", "-select_streams", "a:0",
-        "-show_entries", "stream=codec_name,sample_rate,bits_per_raw_sample,bits_per_sample,channels",
+        "-show_entries", "stream=codec_name,sample_rate,bits_per_raw_sample,bits_per_sample,channels,bit_rate",
         "-of", "json", path,
     )
     streams = json.loads(out).get("streams") or [{}]
     return streams[0]
+
+
+def _nominal_kbps(bit_rate: int) -> int:
+    """Measured bitrates wobble (257k for Apple's 256k AAC); snap to the usual ones."""
+    kbps = bit_rate / 1000
+    for nominal in (64, 96, 128, 160, 192, 256, 320, 384, 448, 640, 768):
+        if abs(kbps - nominal) <= nominal * 0.04:
+            return nominal
+    return round(kbps)
+
+
+async def audio_quality(path: str, ffmpeg: str = "ffmpeg") -> dict | None:
+    """What a downloaded file really is, for the Downloads page:
+    {"codec": "alac"|"aac"|"eac3"|..., "bits": 24, "rate": 96000, "kbps": 256}."""
+    try:
+        info = await probe(path, _ffprobe_for(shutil.which(ffmpeg) or ffmpeg))
+    except (ConvertError, OSError, ValueError):
+        return None
+
+    def number(key: str) -> int | None:
+        try:
+            return int(float(info.get(key) or 0)) or None
+        except (TypeError, ValueError):
+            return None
+
+    codec = (info.get("codec_name") or "").lower() or None
+    bits = number("bits_per_raw_sample") or number("bits_per_sample")
+    bit_rate = number("bit_rate")
+    return {
+        "codec": codec,
+        "bits": bits if codec in LOSSLESS_CODECS else None,
+        "rate": number("sample_rate"),
+        "kbps": _nominal_kbps(bit_rate) if bit_rate and codec not in LOSSLESS_CODECS else None,
+        "channels": info.get("channels"),
+    }
 
 
 def extra_tags(media_metadata: dict | None) -> dict:

@@ -90,6 +90,8 @@ class Track:
     progress: float | None = None
     bytes_done: int | None = None
     bytes_total: int | None = None
+    # The downloaded file's real format, e.g. {"codec": "alac", "bits": 24, "rate": 96000}.
+    quality: dict[str, Any] | None = None
 
     def public(self) -> dict[str, Any]:
         return self.__dict__.copy()
@@ -323,6 +325,7 @@ class JobManager:
                         track.status = "skipped"
                         track.message = SKIP_MESSAGES[GamdlDownloaderMediaFileExistsError]
                         track.path = existing
+                        track.quality = await convert.audio_quality(existing, settings.ffmpeg_path)
                         self._publish(job)
                         continue
 
@@ -339,6 +342,9 @@ class JobManager:
                     if track:
                         track.status = "skipped"
                         track.message = SKIP_MESSAGES.get(type(e), str(e))
+                        if isinstance(e, GamdlDownloaderMediaFileExistsError) and item.final_path and os.path.exists(item.final_path):
+                            track.path = item.final_path
+                            track.quality = await convert.audio_quality(item.final_path, settings.ffmpeg_path)
                 except Exception as e:
                     log.error(
                         f'오류 "{track.title if track else media.media_id}": {e}',
@@ -353,6 +359,7 @@ class JobManager:
                     if track and not media.partial:
                         track.path = item.final_path
                         if media_type in {"songs", "library-songs"} and os.path.exists(item.final_path):
+                            track.quality = await convert.audio_quality(item.final_path, settings.ffmpeg_path)
                             progress.report("finish")
                             await self._tag_extras(item, settings, log)
                             if settings.save_motion_cover:
