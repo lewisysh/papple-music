@@ -32,15 +32,16 @@ Papple Music is a self-hosted web app that puts a polished, Apple Music–like i
 
 1. [Features](#features)
 2. [Screenshots](#screenshots)
-3. [Requirements](#requirements)
-4. [Quick start (5 minutes)](#quick-start-5-minutes)
-5. [Signing in: cookies vs. wrapper](#signing-in-cookies-vs-wrapper)
-6. [Setting up the wrapper (ALAC lossless)](#setting-up-the-wrapper-alac-lossless)
-7. [How to use](#how-to-use)
-8. [Settings](#settings)
-9. [Docker and Synology NAS](#docker-and-synology-nas)
-10. [FAQ](#faq)
-11. [Credits, disclaimer and license](#credits-disclaimer-and-license)
+3. [Mac app (easiest)](#mac-app-easiest)
+4. [Requirements](#requirements)
+5. [Quick start from source](#quick-start-from-source)
+6. [Signing in: cookies vs. wrapper](#signing-in-cookies-vs-wrapper)
+7. [Setting up the wrapper (ALAC lossless)](#setting-up-the-wrapper-alac-lossless)
+8. [How to use](#how-to-use)
+9. [Settings](#settings)
+10. [Docker and Synology NAS](#docker-and-synology-nas)
+11. [FAQ](#faq)
+12. [Credits, disclaimer and license](#credits-disclaimer-and-license)
 
 ---
 
@@ -88,6 +89,43 @@ Papple Music is a self-hosted web app that puts a polished, Apple Music–like i
 
 ---
 
+## Mac app (easiest)
+
+No terminal needed — Python, all libraries and ffmpeg are inside the app.
+
+1. Download **`Papple-Music-<version>-arm64.dmg`** from the [**Releases**](https://github.com/lewisysh/papple-music/releases) page (Apple Silicon Macs, macOS 12 or later).
+2. Open it and drag **Papple Music** into **Applications**.
+3. Open **Papple Music**. Your browser opens the app, and a 🍐 icon appears in the menu bar.
+
+| Menu bar 🍐 | |
+| --- | --- |
+| Open Papple Music | Opens the app in your browser |
+| Open Download Folder | Shows your music in Finder |
+| Open at Login | Starts quietly in the background when you log in |
+| Quit Papple Music | Stops the server |
+
+> [!IMPORTANT]
+> **First launch:** the app isn't signed with an Apple Developer ID, so macOS blocks it the first time.
+> Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to "Papple Music".
+> (Or run `xattr -dr com.apple.quarantine "/Applications/Papple Music.app"` once.)
+
+The app uses the same data folder (`~/.gamdl-web/`) as the source version. ALAC lossless still needs the [wrapper](#setting-up-the-wrapper-alac-lossless) running in Docker; everything else works with just the app and your [cookies](#signing-in-cookies-vs-wrapper).
+
+<details>
+<summary><b>Build the app yourself</b></summary>
+
+```bash
+git clone https://github.com/lewisysh/papple-music.git
+cd papple-music
+./scripts/build-macapp.sh
+# → dist/macapp/Papple Music.app and dist/Papple-Music-<version>-<arch>.dmg
+```
+
+The app is built for the CPU of the Mac you build on (Apple Silicon or Intel).
+</details>
+
+---
+
 ## Requirements
 
 | You need | Why |
@@ -101,7 +139,7 @@ Built and tested on macOS (Apple Silicon); Linux works too. A few buttons such a
 
 ---
 
-## Quick start (5 minutes)
+## Quick start from source
 
 **1. Install the tools** (macOS with [Homebrew](https://brew.sh))
 

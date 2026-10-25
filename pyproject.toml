@@ -23,3 +23,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["gamdl_web"]
+
+[dependency-groups]
+app = [
+    "imageio-ffmpeg>=0.6.0",
+    "pyinstaller>=6.22.3",
+    "rumps>=0.4.0",
+]

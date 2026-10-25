@@ -8,6 +8,7 @@ import re
 import shutil
 from pathlib import Path
 
+import mutagen
 from mutagen.flac import FLAC, Picture
 from mutagen.id3 import (
     APIC, COMM, TALB, TCMP, TCOM, TCON, TCOP, TDRC, TIT2, TPE1, TPE2, TPOS, TPUB,
@@ -43,7 +44,31 @@ async def _run(*args: str) -> str:
     return out.decode(errors="replace")
 
 
+MP4_CODECS = {"alac": "alac", "ec-3": "eac3", "ac-3": "ac3"}
+
+
+def _probe_tags(path: str) -> dict:
+    """ffprobe-style stream info from mutagen, for setups without ffprobe (the Mac app)."""
+    audio = mutagen.File(path)
+    if audio is None:
+        raise ConvertError(f"unknown audio format: {path}")
+    info = audio.info
+    if isinstance(audio, FLAC):
+        codec = "flac"
+    else:
+        raw = (getattr(info, "codec", "") or "").lower()
+        codec = MP4_CODECS.get(raw, "aac" if raw.startswith("mp4a") else raw or "unknown")
+    return {
+        "codec_name": codec,
+        "sample_rate": str(getattr(info, "sample_rate", 0) or ""),
+        "bits_per_raw_sample": str(getattr(info, "bits_per_sample", 0) or ""),
+        "channels": getattr(info, "channels", None),
+    }
+
+
 async def probe(path: str, ffprobe: str) -> dict:
+    if not (shutil.which(ffprobe) or Path(ffprobe).is_file()):
+        return await asyncio.to_thread(_probe_tags, path)
     out = await _run(
         ffprobe, "-v", "error", "-select_streams", "a:0",
         "-show_entries", "stream=codec_name,sample_rate,bits_per_raw_sample,bits_per_sample,channels",
