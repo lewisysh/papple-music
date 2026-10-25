@@ -29,7 +29,7 @@
         </button>
         <button role="tab" data-tab="download">
           <span class="sb-icon" data-icon="download"></span>
-          <span class="sb-label">다운로드</span>
+          <span class="sb-label" data-en="Downloads">다운로드</span>
           <span class="sb-badge hidden" id="badge-active"></span>
         </button>
         <button role="tab" data-tab="wrapper">
@@ -70,7 +70,7 @@
           <span class="sb-tagline">Enhanced Downloader</span>
         </span>
       </a>
-      <!-- 검색 -->
+      <!-- Search -->
       <section id="tab-search" class="page active">
         <header class="page-head">
           <h1>검색</h1>
@@ -115,16 +115,16 @@
         </div>
       </section>
 
-      <!-- 앨범 · 아티스트 · 플레이리스트 -->
+      <!-- Album · artist · playlist -->
       <section id="tab-detail" class="page">
         <div id="detail"></div>
       </section>
 
-      <!-- 다운로드 -->
+      <!-- Downloads -->
       <section id="tab-download" class="page">
         <header class="page-head page-head-row">
           <div>
-            <h1>다운로드</h1>
+            <h1 data-en="Downloads">다운로드</h1>
             <p id="queue-summary">대기열과 진행 상황</p>
           </div>
           <div class="head-actions">
@@ -185,11 +185,17 @@
         </div>
       </section>
 
-      <!-- 설정 -->
+      <!-- Settings -->
       <section id="tab-settings" class="page narrow">
-        <header class="page-head">
-          <h1>설정</h1>
-          <p>저장 위치, 음질, 파일 이름, 메타데이터를 정합니다.</p>
+        <header class="page-head page-head-row">
+          <div>
+            <h1>설정</h1>
+            <p>저장 위치, 음질, 파일 이름, 메타데이터를 정합니다.</p>
+          </div>
+          <div class="segmented lang-switch" id="lang-switch" role="radiogroup" aria-label="Language" data-no-i18n>
+            <button type="button" data-lang="ko">한국어</button>
+            <button type="button" data-lang="en">English</button>
+          </div>
         </header>
 
         <div class="group-head">
@@ -378,6 +384,7 @@
 
   <div id="tip" class="tip hidden" role="tooltip"></div>
   <div id="toasts" aria-live="polite"></div>
+  <script src="/static/i18n.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

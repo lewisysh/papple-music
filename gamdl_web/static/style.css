@@ -858,7 +858,7 @@ body.panel-open .player { --pl-right: 356px; }
 .pl-btn .icon { stroke-width: 1.7; }
 .pl-btn:hover { background: var(--fill-2); }
 .pl-btn:active { transform: scale(0.88); }
-.pl-btn.pl-small { color: var(--label-2); font-size: 16px; }
+.pl-btn.pl-small { color: var(--label-2); font-size: 16px; --ps: 1.35; }
 .pl-btn.on { color: var(--accent); }
 .pl-main { width: 42px; height: 42px; }
 .pl-main:hover { background: none; transform: scale(1.06); }

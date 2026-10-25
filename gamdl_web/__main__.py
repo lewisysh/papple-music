@@ -27,7 +27,7 @@ def main() -> None:
         and os.environ.get("GAMDL_WEB_ALLOW_NO_PASSWORD") != "1"
     ):
         raise SystemExit(
-            "오류: 외부에 공개된 주소로 실행하려면 GAMDL_WEB_PASSWORD 환경 변수로 비밀번호를 설정하세요."
+            "error: set a password with the GAMDL_WEB_PASSWORD environment variable to listen on a public address."
         )
 
     if args.open:
