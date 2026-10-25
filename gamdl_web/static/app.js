@@ -1570,8 +1570,9 @@ async function playCurrent({ keepTime = 0 } = {}) {
   if ("mediaSession" in navigator) {
     navigator.mediaSession.metadata = new MediaMetadata({
       title: t.name, artist: t.artist || "", album: t.album || "",
-      artwork: t.artwork ? [256, 512, 1024].map((n) => ({ src: artAt(t.artwork, n), sizes: `${n}x${n}`, type: "image/jpeg" })) : [],
+      artwork: t.artwork ? [{ src: artAt(t.artwork, 600), sizes: "600x600" }] : [],
     });
+    bindMediaSession();
   }
   markPlaying();
   renderQueuePanel();
@@ -1674,21 +1675,59 @@ $("#pl-more").addEventListener("click", (e) => {
 });
 
 const volume = $("#pl-volume");
-const volumeLocked = (() => { const a = document.createElement("audio"); a.volume = 0.5; return a.volume !== 0.5; })();
-document.body.classList.toggle("volume-locked", volumeLocked);
+// iOS ignores audio.volume (the side buttons own it), so there the level goes
+// through a gain node instead. It's built on the first change below 100%, from a
+// touch, so playback nobody turned down stays a plain <audio> element.
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+let gainNode = null;
+function setOutputVolume(v) {
+  if (!IOS) { player.audio.volume = v; return; }
+  if (!gainNode && v < 1) {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    gainNode = ctx.createGain();
+    ctx.createMediaElementSource(player.audio).connect(gainNode).connect(ctx.destination);
+    // Locking the phone or switching apps can suspend the context.
+    const wake = () => { if (ctx.state !== "running" && !player.audio.paused) ctx.resume().catch(() => {}); };
+    document.addEventListener("visibilitychange", wake);
+    player.audio.addEventListener("play", wake);
+    player.audio.addEventListener("playing", wake);
+  }
+  if (gainNode) gainNode.gain.value = v;
+}
+function setVolume(v) {
+  player.volume = Math.min(1, Math.max(0, v));
+  player.audio.muted = false;
+  setOutputVolume(player.volume);
+  store.set("volume", player.volume);
+  renderVolume();
+}
 function renderVolume() {
-  $("#pl-vol-btn").innerHTML = picon(player.audio.muted || player.audio.volume === 0 ? "speaker" : "volume");
-  const v = player.audio.muted ? 0 : player.audio.volume;
+  const v = player.audio.muted ? 0 : player.volume;
+  $("#pl-vol-btn").innerHTML = picon(v === 0 ? "speaker" : "volume");
   for (const el of [volume, $("#fp-volume")]) { el.style.setProperty("--v", `${v * 100}%`); if (document.activeElement !== el) el.value = v; }
 }
-for (const el of [volume, $("#fp-volume")]) {
-  el.addEventListener("input", () => {
-    player.audio.volume = Number(el.value);
-    player.audio.muted = false;
-    store.set("volume", player.audio.volume);
-    renderVolume();
-  });
-}
+volume.addEventListener("input", () => setVolume(Number(volume.value)));
+
+// Full-screen player: drag anywhere on the row. Like iOS, the level moves with the
+// finger from wherever it lands instead of jumping to the touch point.
+const fpVolume = $(".fp-volume");
+fpVolume.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  try { fpVolume.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
+  fpVolume.classList.add("dragging");
+  const width = $("#fp-volume").getBoundingClientRect().width || 1;
+  const start = { x: e.clientX, v: player.audio.muted ? 0 : player.volume };
+  const move = (ev) => setVolume(start.v + (ev.clientX - start.x) / width);
+  const end = () => {
+    fpVolume.classList.remove("dragging");
+    fpVolume.removeEventListener("pointermove", move);
+    fpVolume.removeEventListener("pointerup", end);
+    fpVolume.removeEventListener("pointercancel", end);
+  };
+  fpVolume.addEventListener("pointermove", move);
+  fpVolume.addEventListener("pointerup", end);
+  fpVolume.addEventListener("pointercancel", end);
+});
 $("#pl-vol-btn").addEventListener("click", () => { player.audio.muted = !player.audio.muted; renderVolume(); });
 
 // Scrubber: hovering the now-playing area swaps the title for times and a
@@ -1755,9 +1794,30 @@ player.audio.addEventListener("timeupdate", () => {
   }
   highlightLyric(c);
 });
+// iOS shows ±10 s skip buttons unless the page claims the track buttons. Bind them
+// again on every track, after playback starts, and drop the seek handlers.
+function bindMediaSession() {
+  const ms = navigator.mediaSession;
+  const set = (action, fn) => { try { ms.setActionHandler(action, fn); } catch { /* unsupported action */ } };
+  set("play", () => player.audio.play());
+  set("pause", () => player.audio.pause());
+  set("previoustrack", () => $("#pl-prev").click());
+  set("nexttrack", () => step(1));
+  set("seekbackward", null);
+  set("seekforward", null);
+  set("seekto", (d) => { if (Number.isFinite(d.seekTime)) player.audio.currentTime = d.seekTime; });
+}
+function syncPositionState() {
+  const a = player.audio;
+  if (!("mediaSession" in navigator) || !Number.isFinite(a.duration) || !a.duration) return;
+  try { navigator.mediaSession.setPositionState({ duration: a.duration, playbackRate: a.playbackRate || 1, position: Math.min(a.currentTime, a.duration) }); } catch { /* old Safari */ }
+}
 if ("mediaSession" in navigator) {
-  navigator.mediaSession.setActionHandler("previoustrack", () => step(-1));
-  navigator.mediaSession.setActionHandler("nexttrack", () => step(1));
+  bindMediaSession();
+  player.audio.addEventListener("loadedmetadata", syncPositionState);
+  player.audio.addEventListener("seeked", syncPositionState);
+  player.audio.addEventListener("play", () => { navigator.mediaSession.playbackState = "playing"; syncPositionState(); });
+  player.audio.addEventListener("pause", () => { navigator.mediaSession.playbackState = "paused"; syncPositionState(); });
 }
 document.addEventListener("keydown", (e) => {
   if (e.code !== "Space" || !player.audio.src || e.target.closest("input, textarea, select, button, video")) return;
@@ -1765,7 +1825,11 @@ document.addEventListener("keydown", (e) => {
   e.preventDefault();
   player.play.click();
 });
-player.audio.volume = store.get("volume", 1);
+player.volume = store.get("volume", 1);
+if (IOS) {
+  // A saved lower level needs the gain node, which iOS only starts from a touch.
+  if (player.volume < 1) document.addEventListener("pointerdown", () => setOutputVolume(player.volume), { once: true });
+} else player.audio.volume = player.volume;
 renderVolume();
 renderRepeat();
 renderQualityButton();
