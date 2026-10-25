@@ -49,6 +49,7 @@ const ICONS = {
   server: '<rect x="3.5" y="4" width="17" height="7" rx="2"/><rect x="3.5" y="13" width="17" height="7" rx="2"/><path d="M7.5 7.5h.01M7.5 16.5h.01" stroke-width="2.6"/>',
   sliders: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
   link: '<path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/>',
+  tick: '<path d="m5 12.5 4.6 4.6L19.2 7.2" stroke-width="2.2"/>',
   check: '<circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="m7.6 12.4 3 3 5.8-6.2" stroke="#fff" stroke-width="2"/>',
   alert: '<circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M12 7.2v6" stroke="#fff" stroke-width="2.2"/><path d="M12 16.8h.01" stroke="#fff" stroke-width="2.6"/>',
   minus: '<circle cx="12" cy="12" r="10" fill="currentColor" stroke="none"/><path d="M7.5 12h9" stroke="#fff" stroke-width="2.2"/>',
@@ -951,6 +952,8 @@ function qualityBadges(traits) {
 }
 
 const explicitMark = (it) => (it.explicit ? '<span class="explicit" title="Explicit">E</span>' : "");
+// mzstatic serves any size: swap the …/600x600bb.jpg part of the URL.
+const artAt = (url, n) => (url || "").replace(/\/\d+x\d+(\w*)\.(jpg|png|webp)/, `/${n}x${n}$1.$2`);
 const artworkImg = (it) =>
   it.artwork ? `<img src="${esc(it.artwork)}" alt="" loading="lazy">` : `<span class="art-ph">${icon("note")}</span>`;
 
@@ -1466,7 +1469,7 @@ function renderQualityButton() {
   const lossless = player.quality === "lossless";
   btn.innerHTML = lossless ? `<span class="pl-qmark">${MARKS.lossless}</span>` : '<span class="badge-q">AAC</span>';
   btn.classList.toggle("on", lossless);
-  btn.title = `${player.format || (lossless ? "무손실" : "AAC 256kbps")} · 눌러서 ${lossless ? "AAC" : "무손실"}로 전환`;
+  btn.title = `${player.format || (lossless ? "무손실" : "AAC 256kbps")} · 음질 선택`;
   const hires = /(\d+)bit · ([\d.]+)kHz/.exec(player.format);
   const label = !lossless ? "AAC" : hires && (Number(hires[1]) > 16 && Number(hires[2]) > 48) ? "Hi-Res Lossless" : "Lossless";
   $("#fp-quality").innerHTML = `${lossless ? MARKS.lossless : ""}<span>${label}</span>`;
@@ -1567,7 +1570,7 @@ async function playCurrent({ keepTime = 0 } = {}) {
   if ("mediaSession" in navigator) {
     navigator.mediaSession.metadata = new MediaMetadata({
       title: t.name, artist: t.artist || "", album: t.album || "",
-      artwork: t.artwork ? [{ src: t.artwork, sizes: "120x120" }] : [],
+      artwork: t.artwork ? [256, 512, 1024].map((n) => ({ src: artAt(t.artwork, n), sizes: `${n}x${n}`, type: "image/jpeg" })) : [],
     });
   }
   markPlaying();
@@ -1617,14 +1620,44 @@ $("#pl-repeat").addEventListener("click", () => {
   store.set("repeat", player.repeat);
   renderRepeat();
 });
-$("#pl-quality").addEventListener("click", () => {
-  player.quality = player.quality === "aac" ? "lossless" : "aac";
+const QUALITY_CHOICES = [
+  { q: "lossless", label: "무손실", sub: "ALAC · 최대 24비트/192kHz · wrapper 필요" },
+  { q: "aac", label: "AAC", sub: "256kbps · 빠르게 시작" },
+];
+
+function openQualityMenu(btn) {
+  if (menuToggledOff(btn)) return;
+  menuItem = null;
+  menu.innerHTML = `<div class="ctx-title">스트리밍 음질</div>${QUALITY_CHOICES.map(({ q, label, sub }) => {
+    const on = q === player.quality;
+    const mark = q === "lossless" ? `<span class="qm-mark">${MARKS.lossless}</span>` : "";
+    const now = on && player.format ? ` · ${esc(player.format)}` : "";
+    return `<button class="ctx-row qm-choice${on ? " on" : ""}" data-quality="${q}">
+      <span class="qm-tick">${on ? icon("tick") : ""}</span>
+      <span class="qm-text"><b>${mark}${label}</b><small>${sub}${now ? `<em>${now}</em>` : ""}</small></span></button>`;
+  }).join("")}`;
+  const r = btn.getBoundingClientRect();
+  placeMenu(r.left + r.width / 2, r.top, true, true, anchorOf(btn));
+}
+
+// The context menu is set up further down; reach it by id here.
+$("#ctx-menu").addEventListener("click", (e) => {
+  const row = e.target.closest("[data-quality]");
+  if (!row) return;
+  closeMenu();
+  setStreamQuality(row.dataset.quality);
+});
+
+function setStreamQuality(quality) {
+  if (quality === player.quality) return;
+  player.quality = quality;
   store.set("streamQuality", player.quality);
   if (player.quality === "lossless" && !wrapperReady()) toast("무손실 스트리밍은 wrapper 로그인이 필요합니다", "err");
   else toast(player.quality === "lossless" ? "무손실(ALAC)로 스트리밍합니다 · 처음엔 준비가 조금 걸려요" : "AAC 256kbps로 스트리밍합니다");
   renderQualityButton();
   if (player.queue[player.index]) playCurrent({ keepTime: player.audio.currentTime });
-});
+}
+$("#pl-quality").addEventListener("click", (e) => openQualityMenu(e.currentTarget));
 $("#pl-airplay").addEventListener("click", async () => {
   const a = player.audio;
   if (a.webkitShowPlaybackTargetPicker) { a.webkitShowPlaybackTargetPicker(); return; }
@@ -1637,10 +1670,12 @@ $("#pl-airplay").addEventListener("click", async () => {
 $("#pl-more").addEventListener("click", (e) => {
   const t = player.queue[player.index];
   const r = e.currentTarget.getBoundingClientRect();
-  if (t) openMenu(t, r.left, r.top, { above: true });
+  if (t) openMenu(t, r.left, r.top, { above: true, opener: e.currentTarget });
 });
 
 const volume = $("#pl-volume");
+const volumeLocked = (() => { const a = document.createElement("audio"); a.volume = 0.5; return a.volume !== 0.5; })();
+document.body.classList.toggle("volume-locked", volumeLocked);
 function renderVolume() {
   $("#pl-vol-btn").innerHTML = picon(player.audio.muted || player.audio.volume === 0 ? "speaker" : "volume");
   const v = player.audio.muted ? 0 : player.audio.volume;
@@ -1924,10 +1959,10 @@ const insetOf = (r, radius) =>
   `inset(${r.top}px ${innerWidth - r.right}px ${innerHeight - r.bottom}px ${r.left}px round ${radius}px)`;
 
 function syncFull(t) {
-  const big = (t.artwork || "").replace(/\/\d+x\d+(\w*)\.(jpg|png)/, "/1200x1200$1.$2");
+  const big = artAt(t.artwork, 1200);
   full.art.innerHTML = big ? `<img src="${esc(big)}" alt="">` : artworkImg(t);
   $("#fp-head-art").innerHTML = artworkImg(t);
-  $("#fp-bg").style.backgroundImage = t.artwork ? `url("${t.artwork}")` : "";
+  $("#fp-bg").style.setProperty("--fp-art", t.artwork ? `url("${artAt(t.artwork, 300)}")` : "none");
   for (const el of $$("[data-fp=title]")) el.textContent = t.name;
   for (const el of $$("[data-fp=artist]")) el.textContent = t.artist || "";
 }
@@ -1989,7 +2024,7 @@ $("#fp-close").addEventListener("click", () => closeFull());
 $("#fp-play").addEventListener("click", () => player.play.click());
 $("#fp-prev").addEventListener("click", () => $("#pl-prev").click());
 $("#fp-next").addEventListener("click", () => step(1));
-$("#fp-quality").addEventListener("click", () => $("#pl-quality").click());
+$("#fp-quality").addEventListener("click", (e) => openQualityMenu(e.currentTarget));
 $("#fp-airplay").addEventListener("click", () => $("#pl-airplay").click());
 $("#fp-lyrics").addEventListener("click", () => openPanel("lyrics"));
 $("#fp-queue").addEventListener("click", () => openPanel("queue"));
@@ -1997,7 +2032,7 @@ $("#fp-head").addEventListener("click", closePanel);
 $("#fp-more").addEventListener("click", (e) => {
   const t = player.queue[player.index];
   const r = e.currentTarget.getBoundingClientRect();
-  if (t) openMenu(t, r.right - 240, r.bottom + 6);
+  if (t) openMenu(t, r.right - 240, r.bottom + 6, { opener: e.currentTarget });
 });
 $("#fp-artist").addEventListener("click", async () => {
   const t = player.queue[player.index];
@@ -2174,27 +2209,48 @@ function renderMenu(it) {
   menu.innerHTML = rows.join("");
 }
 
-function placeMenu(x, y, above) {
-  menu.classList.remove("hidden");
+// The menu unfolds from `anchor` (the button or click point), so it grows out of
+// what opened it and folds back into it.
+let menuHideTimer = 0;
+function placeMenu(x, y, above, center = false, anchor = null) {
+  clearTimeout(menuHideTimer);
+  menu.classList.remove("hidden", "open");
   const w = menu.offsetWidth, h = menu.offsetHeight;
-  const left = Math.min(x, window.innerWidth - w - 8);
-  const top = above ? Math.max(8, y - h - 8) : Math.min(y, window.innerHeight - h - 8);
-  menu.style.left = `${Math.max(8, left)}px`;
+  const left = Math.max(8, Math.min(center ? x - w / 2 : x, window.innerWidth - w - 8));
+  const top = above ? Math.max(8, y - h - 8) : Math.max(8, Math.min(y, window.innerHeight - h - 8));
+  menu.style.left = `${left}px`;
   menu.style.top = `${top}px`;
+  const ox = Math.min(w, Math.max(0, (anchor?.x ?? x) - left));
+  const oy = Math.min(h, Math.max(0, (anchor?.y ?? y) - top));
+  menu.style.transformOrigin = `${ox}px ${oy}px`;
+  void menu.offsetWidth;
   requestAnimationFrame(() => menu.classList.add("open"));
 }
 
-function openMenu(it, x, y, { above = false } = {}) {
+// A second tap on the button that opened the menu closes it: the document's
+// pointerdown closes the menu and remembers the button, and its click then stops.
+let menuOpener = null, menuClosedFrom = null;
+function menuToggledOff(opener) {
+  const off = opener && menuClosedFrom === opener;
+  menuClosedFrom = null;
+  menuOpener = opener;
+  return off;
+}
+const anchorOf = (el) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+
+function openMenu(it, x, y, { above = false, opener = null } = {}) {
+  if (menuToggledOff(opener)) return;
   menuItem = it;
   renderMenu(it);
-  menu.classList.remove("open");
-  placeMenu(x, y, above);
+  placeMenu(x, y, above, false, opener && anchorOf(opener));
 }
 
 function closeMenu() {
-  menu.classList.remove("open");
-  menu.classList.add("hidden");
   menuItem = null;
+  if (menu.classList.contains("hidden")) return;
+  menu.classList.remove("open");
+  clearTimeout(menuHideTimer);
+  menuHideTimer = setTimeout(() => menu.classList.add("hidden"), 200);
 }
 
 document.addEventListener("contextmenu", (e) => {
@@ -2207,7 +2263,11 @@ document.addEventListener("contextmenu", (e) => {
   e.preventDefault();
   openMenu(it, e.clientX, e.clientY);
 });
-document.addEventListener("pointerdown", (e) => { if (!menu.contains(e.target)) closeMenu(); });
+document.addEventListener("pointerdown", (e) => {
+  if (menu.contains(e.target)) return;
+  menuClosedFrom = menu.classList.contains("open") && menuOpener?.contains(e.target) ? menuOpener : null;
+  closeMenu();
+});
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeMenu(); closeInfo(); closeVideo(); } });
 window.addEventListener("scroll", closeMenu, { passive: true });
 
