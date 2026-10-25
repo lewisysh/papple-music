@@ -969,7 +969,8 @@ body.panel-open .content { padding-right: 380px; }
 [data-history] .q-text { opacity: 0.7; }
 .q-empty { padding: 24px 8px; text-align: center; color: var(--label-2); font-size: 13px; }
 .sp-body.lyrics {
-  overflow: hidden; padding: 0 22px; overscroll-behavior: contain;
+  overflow-y: auto; scrollbar-width: none; scroll-behavior: auto; touch-action: pan-y;
+  padding: 0 22px; overscroll-behavior: contain;
   -webkit-mask-image: linear-gradient(transparent, #000 10%, #000 82%, transparent);
   mask-image: linear-gradient(transparent, #000 10%, #000 82%, transparent);
 }
@@ -984,7 +985,8 @@ body.panel-open .content { padding-right: 380px; }
 .ly-line:hover { opacity: 0.6; filter: none; }
 .ly-line.active { opacity: 1; filter: none; transform: translateY(var(--ly-y, 0px)) scale(1); }
 .ly-line:empty { min-height: 1em; }
-/* Hand scrolling: the frame loop moves the lines, so no transform transition. */
+.sp-body.lyrics::-webkit-scrollbar { display: none; }
+/* Hand scrolling and jumps: no transform transition. */
 .lyrics.instant .ly-line { transition: opacity 0.4s ease, filter 0.3s ease; filter: none; }
 .lyrics:not(.instant) .ly-line.past { opacity: 0.22; }
 

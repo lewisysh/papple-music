@@ -1964,58 +1964,49 @@ function lyricsBounds() {
   return { min: h * 0.5 - last.offsetTop - last.offsetHeight, max: h * 0.4 - lines[0].offsetTop };
 }
 
+// Room above the first and below the last line, so native scrolling can reach
+// every position the rolling transform can.
+function padLyrics() {
+  const h = lyr.box.clientHeight;
+  const top = `${Math.round(h * 0.4)}px`;
+  if (lyr.box.style.paddingTop === top) return;
+  lyr.box.style.paddingTop = top;
+  lyr.box.style.paddingBottom = `${Math.round(h * 0.6)}px`;
+}
+
 function setLyricsY(y, instant) {
+  padLyrics();
   const b = lyricsBounds();
   if (!b) return;
-  stopLyricsScroll();
+  const box = lyr.box;
+  if (box.scrollTop) {
+    // Hand back from hand scrolling: fold the scroll offset into the transform
+    // without moving anything on screen, then roll on from there.
+    box.classList.add("instant");
+    box.style.setProperty("--ly-y", `${lyr.y - box.scrollTop}px`);
+    box.scrollTop = 0;
+    void box.offsetHeight;
+  }
+  lyr.manual = false;
   lyr.y = Math.min(b.max, Math.max(b.min, y));
-  lyr.box.classList.toggle("instant", instant);
-  lyr.box.style.setProperty("--ly-y", `${lyr.y}px`);
+  box.classList.toggle("instant", instant);
+  box.style.setProperty("--ly-y", `${lyr.y}px`);
 }
 
-// Manual scrolling: wheel and touch move a target and a frame loop eases the
-// lines toward it, coasts after a flick and springs back past either end, so
-// mice, trackpads and fingers all glide instead of stepping.
-const lyScroll = { target: 0, v: 0, raf: 0, touch: null };
+// Hand scrolling is the browser's own (trackpad momentum, touch flicks): the
+// transform is folded into scrollTop when it starts and back out when the
+// lyrics resume following the song.
 const LY_HOLD = 3500;
-
-function stopLyricsScroll() {
-  cancelAnimationFrame(lyScroll.raf);
-  lyScroll.raf = 0;
-  lyScroll.v = 0;
-}
-
-function lyricsFrame() {
-  const b = lyricsBounds();
-  if (!b) { lyScroll.raf = 0; return; }
-  if (!lyScroll.touch) {
-    if (lyScroll.v) {
-      lyScroll.target += lyScroll.v;
-      lyScroll.v *= 0.95;
-      if (Math.abs(lyScroll.v) < 0.15) lyScroll.v = 0;
-    }
-    const inside = Math.min(b.max, Math.max(b.min, lyScroll.target));
-    if (inside !== lyScroll.target) {
-      lyScroll.v *= 0.5;
-      lyScroll.target += (inside - lyScroll.target) * 0.18;
-      if (Math.abs(inside - lyScroll.target) < 0.5) lyScroll.target = inside;
-    }
-  }
-  lyr.y += (lyScroll.target - lyr.y) * (lyScroll.touch ? 0.6 : 0.2);
-  if (Math.abs(lyScroll.target - lyr.y) < 0.3) lyr.y = lyScroll.target;
-  lyr.box.style.setProperty("--ly-y", `${lyr.y}px`);
+function startHandScroll() {
   lyr.manualUntil = performance.now() + LY_HOLD;
-  const moving = lyScroll.touch || lyScroll.v || lyr.y !== lyScroll.target;
-  lyScroll.raf = moving ? requestAnimationFrame(lyricsFrame) : 0;
-}
-
-function startLyricsScroll() {
-  lyr.box.classList.add("instant");
-  lyr.manualUntil = performance.now() + LY_HOLD;
-  if (!lyScroll.raf) {
-    lyScroll.target = lyr.y;
-    lyScroll.raf = requestAnimationFrame(lyricsFrame);
-  }
+  if (lyr.manual || !lyricsBounds()) return;
+  padLyrics();
+  lyr.manual = true;
+  const box = lyr.box;
+  box.classList.add("instant");
+  box.style.setProperty("--ly-y", "0px");
+  box.scrollTop = -lyr.y;
+  lyr.y = 0;
 }
 
 function anchorLyrics(instant = false) {
@@ -2027,6 +2018,7 @@ function anchorLyrics(instant = false) {
     el.style.setProperty("--ly-delay", instant ? "0ms" : `${Math.max(0, Math.min(d + 1, 9)) * 42}ms`);
     el.style.setProperty("--ly-blur", lyr.current < 0 ? "0px" : `${Math.min(Math.abs(d), 4) * 0.45}px`);
   });
+  padLyrics();
   setLyricsY(lyr.box.clientHeight * 0.36 - line.offsetTop - line.offsetHeight / 2, instant);
 }
 
@@ -2041,45 +2033,10 @@ function highlightLyric(time) {
   if (!manual) anchorLyrics(false);
 }
 
-lyr.box.addEventListener("wheel", (e) => {
-  e.preventDefault();
-  const b = lyricsBounds();
-  if (!b) return;
-  startLyricsScroll();
-  const dy = e.deltaY * (e.deltaMode === 1 ? 32 : e.deltaMode === 2 ? lyr.box.clientHeight : 1);
-  lyScroll.v = 0;
-  lyScroll.target = Math.min(b.max, Math.max(b.min, lyScroll.target - dy));
-}, { passive: false });
-lyr.box.addEventListener("touchstart", (e) => {
-  startLyricsScroll();
-  lyScroll.v = 0;
-  lyScroll.touch = { y: e.touches[0].clientY, t: performance.now(), v: 0 };
-}, { passive: true });
-lyr.box.addEventListener("touchmove", (e) => {
-  const tp = lyScroll.touch;
-  if (!tp) return;
-  e.preventDefault();
-  const b = lyricsBounds();
-  const y = e.touches[0].clientY, now = performance.now();
-  let dy = y - tp.y;
-  // Past either end the lines resist, like a rubber band.
-  if (b && (lyScroll.target > b.max || lyScroll.target < b.min)) dy *= 0.35;
-  lyScroll.target += dy;
-  const frameV = dy / Math.max(1, now - tp.t) * 16;
-  tp.v = tp.v * 0.6 + frameV * 0.4;
-  tp.y = y;
-  tp.t = now;
-}, { passive: false });
-const endLyricsTouch = () => {
-  const tp = lyScroll.touch;
-  if (!tp) return;
-  lyScroll.touch = null;
-  // A flick keeps coasting; a finger that stopped before lifting doesn't.
-  lyScroll.v = performance.now() - tp.t < 80 ? tp.v : 0;
-  if (!lyScroll.raf) lyScroll.raf = requestAnimationFrame(lyricsFrame);
-};
-lyr.box.addEventListener("touchend", endLyricsTouch);
-lyr.box.addEventListener("touchcancel", endLyricsTouch);
+lyr.box.addEventListener("wheel", startHandScroll, { passive: true });
+lyr.box.addEventListener("touchstart", startHandScroll, { passive: true });
+// Momentum keeps scrolling after the finger lifts; hold off until it settles.
+lyr.box.addEventListener("scroll", () => { if (lyr.manual) lyr.manualUntil = performance.now() + LY_HOLD; }, { passive: true });
 window.addEventListener("resize", () => { if (lyricsVisible()) anchorLyrics(true); });
 
 $("#sp-lyrics").addEventListener("click", (e) => {
