@@ -49,6 +49,9 @@ app = BUNDLE(
         "CFBundleDisplayName": "Papple Music",
         "CFBundleShortVersionString": VERSION,
         "LSMinimumSystemVersion": "12.0",
+        # Lets the web view (and navigator.language) follow a Korean or English system.
+        "CFBundleDevelopmentRegion": "en",
+        "CFBundleLocalizations": ["en", "ko"],
         "NSHumanReadableCopyright": "MIT License",
         "NSHighResolutionCapable": True,
     },

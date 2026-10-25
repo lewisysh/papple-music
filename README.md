@@ -95,12 +95,12 @@ No terminal needed — Python, all libraries and ffmpeg are inside the app.
 
 1. Download **`Papple-Music-<version>-arm64.dmg`** from the [**Releases**](https://github.com/lewisysh/papple-music/releases) page (Apple Silicon Macs, macOS 12 or later).
 2. Open it and drag **Papple Music** into **Applications**.
-3. Open **Papple Music**. It sits in the Dock like any other app and opens in your browser.
+3. Open **Papple Music**. It opens in its own window and sits in the Dock like any other app.
 
 | | |
 | --- | --- |
-| Click the Dock icon | Opens Papple Music in your browser again |
-| Right-click the Dock icon | Open Download Folder · Open at Login |
+| Close the window | Papple Music keeps running; click the Dock icon to bring it back |
+| Right-click the Dock icon | Open Download Folder · Open in Browser · Open at Login |
 | ⌘Q (or Quit in the Dock menu) | Stops the server |
 
 > [!IMPORTANT]
