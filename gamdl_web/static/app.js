@@ -2397,12 +2397,33 @@ function jobTag(job) {
   return CODEC_TAG[codec] || (codec ? codec.toUpperCase() : "");
 }
 
+const STAGE_LABELS = {
+  download: "다운로드 중",
+  decrypt: "복호화 중",
+  cover: "커버 받는 중",
+  tags: "태그 쓰는 중",
+  finish: "마무리 중",
+  convert: "변환 중",
+};
+const fmtMB = (bytes) => `${(bytes / 1048576).toFixed(1)} MB`;
+
+// "다운로드 중 3.1 / 6.2 MB", "복호화 중", …
+function stageText(t) {
+  const label = STAGE_LABELS[t.stage] || "준비 중…";
+  if (t.stage === "download" && t.bytes_done != null) {
+    return t.bytes_total ? `${label} ${fmtMB(t.bytes_done)} / ${fmtMB(t.bytes_total)}` : `${label} ${fmtMB(t.bytes_done)}`;
+  }
+  return label;
+}
+
 function jobProgress(job) {
   const c = job.counts;
   const finished = (c.done || 0) + (c.skipped || 0) + (c.error || 0) + (c.cancelled || 0);
   const expected = Math.max(c.total, job.urls.length === 1 ? job.collections.reduce((n, col) => n + (col.count || 0), 0) : 0);
-  const pct = job.status === "done" ? 100 : expected ? (finished / expected) * 100 : 0;
-  return { c, finished, expected, pct, indeterminate: job.status === "running" && !expected };
+  const active = job.tracks.filter((t) => t.status === "downloading");
+  const partial = active.reduce((n, t) => n + (t.progress || 0), 0);
+  const pct = job.status === "done" ? 100 : expected ? Math.min(100, ((finished + partial) / expected) * 100) : 0;
+  return { c, finished, expected, pct, current: active[active.length - 1], indeterminate: job.status === "running" && !expected };
 }
 
 function jobStateLine(job, prog) {
@@ -2467,7 +2488,7 @@ function trackEnd(t) {
     case "error": return `<span class="error">${icon("alert")}</span>`;
     case "skipped": return `<span class="skipped">${icon("minus")}</span>`;
     case "cancelled": return `<span class="cancelled">${icon("xcircle")}</span>`;
-    case "downloading": return `<span class="spinner" title="다운로드 중"></span>`;
+    case "downloading": return t.progress != null ? `<span class="t-pct">${Math.floor(t.progress * 100)}%</span>` : `<span class="spinner" title="다운로드 중"></span>`;
     default: return `<span class="spinner slow" title="준비 중"></span>`;
   }
 }
@@ -2475,7 +2496,8 @@ function trackEnd(t) {
 function renderTracks(job) {
   if (!job.tracks.length) return `<p class="panel-empty">아직 트랙 정보가 없습니다.</p>`;
   return `<ol class="tracklist">${job.tracks.map((t) => {
-    const sub = t.message || t.artist || "";
+    const live = t.status === "downloading" && t.stage;
+    const sub = live ? stageText(t) : t.message || t.artist || "";
     const subCls = ["error", "skipped"].includes(t.status) && t.message ? ` ${t.status}` : "";
     return `
       <li>
@@ -2483,7 +2505,8 @@ function renderTracks(job) {
         <div class="t-main">
           <div>
             <div class="t-title">${esc(t.title)}</div>
-            ${sub ? `<div class="t-sub${subCls}" title="${esc(sub)}">${esc(sub)}</div>` : ""}
+            ${sub ? `<div class="t-sub${subCls}${live ? " live" : ""}" title="${esc(sub)}">${esc(sub)}</div>` : ""}
+            ${t.status === "downloading" && t.progress != null ? `<div class="t-bar"><span style="width:${Math.round(t.progress * 100)}%"></span></div>` : ""}
           </div>
           <div class="t-end">${trackEnd(t)}</div>
         </div>
@@ -2520,6 +2543,10 @@ function renderJob(job) {
           <div class="job-title"></div>
           <div class="job-sub"></div>
           <div class="job-state"></div>
+          <div class="job-progress hidden">
+            <div class="jp-bar"><span></span></div>
+            <div class="jp-row"><span class="jp-now"><b class="jp-title"></b><span class="jp-stage"></span></span><span class="jp-pct"></span></div>
+          </div>
         </div>
         <div class="job-side"></div>
       </div>
@@ -2552,6 +2579,7 @@ function renderJob(job) {
   stateEl.className = `job-state ${line.cls}`;
   stateEl.textContent = line.text;
   renderSide(el, job, prog);
+  renderJobProgress(el, job, prog);
   $(".job-error", el).textContent = job.error || "";
 
   $('[data-toggle="tracks"] .lbl', el).textContent = `트랙 ${job.tracks.length}`;
@@ -2559,6 +2587,20 @@ function renderJob(job) {
   $('[data-toggle="tracks"]', el).setAttribute("aria-expanded", tracksOpen);
   $(".panel-tracks", el).classList.toggle("hidden", !tracksOpen);
   if (tracksOpen) $(".panel-tracks", el).innerHTML = renderTracks(job);
+}
+
+// Running jobs: a bar with the overall percentage and what is happening now.
+function renderJobProgress(el, job, prog) {
+  const box = $(".job-progress", el);
+  const running = job.status === "running";
+  box.classList.toggle("hidden", !running);
+  if (!running) return;
+  box.classList.toggle("indeterminate", prog.indeterminate);
+  $(".jp-bar span", box).style.width = `${prog.pct}%`;
+  $(".jp-pct", box).textContent = prog.indeterminate ? "" : `${Math.floor(prog.pct)}%`;
+  const t = prog.current;
+  $(".jp-title", box).textContent = t ? t.title : "";
+  $(".jp-stage", box).textContent = t ? stageText(t) : "곡 정보 가져오는 중…";
 }
 
 function toggleJobPanel(jobId, panel) {

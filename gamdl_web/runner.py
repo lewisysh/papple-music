@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,6 +32,7 @@ from gamdl.interface import (
     UploadedVideoQuality,
 )
 
+from . import progress
 from .config import Settings
 from .prompts import WebPrompts
 
@@ -61,6 +63,7 @@ class WebBaseInterface(AppleMusicBaseInterface):
         )
 
     async def get_cover_bytes(self, cover_url: str | None) -> bytes | None:
+        progress.report("cover")
         if not cover_url:
             return None
         try:
@@ -110,10 +113,32 @@ class WebBaseDownloader(AppleMusicBaseDownloader):
             for attr, value in saved.items():
                 setattr(self, attr, value)
 
+    async def download_stream(self, stream_url: str, download_path: str):
+        total = await progress.stream_size(stream_url)
+        watcher = asyncio.create_task(progress.watch(download_path, total))
+        try:
+            await super().download_stream(stream_url, download_path)
+        finally:
+            watcher.cancel()
+        progress.report("download", total, total)
+
     async def apply_tags(self, media_path, tags, cover_bytes):
+        progress.report("tags")
         if "cover" in (self.exclude_tags or []):
             cover_bytes = None
         await super().apply_tags(media_path, tags, cover_bytes)
+
+
+class WebSongDownloader(AppleMusicSongDownloader):
+    async def stage(self, *args, **kwargs):
+        progress.report("decrypt")
+        return await super().stage(*args, **kwargs)
+
+
+class WebMusicVideoDownloader(AppleMusicMusicVideoDownloader):
+    async def stage(self, *args, **kwargs):
+        progress.report("decrypt")
+        return await super().stage(*args, **kwargs)
 
 
 @dataclass
@@ -261,8 +286,8 @@ async def create_session(settings: Settings, prompts: WebPrompts) -> Session:
         silent=True,
     )
     downloader = AppleMusicDownloader(
-        song=AppleMusicSongDownloader(base=base_downloader),
-        music_video=AppleMusicMusicVideoDownloader(
+        song=WebSongDownloader(base=base_downloader),
+        music_video=WebMusicVideoDownloader(
             base=base_downloader,
             remux_format=RemuxFormatMusicVideo(settings.music_video_remux_format),
         ),

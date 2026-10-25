@@ -26,6 +26,7 @@ from gamdl.interface import (
 )
 
 from . import convert, motion
+from . import progress
 from .config import SettingsStore
 from .events import EventBus
 from .logs import current_job_id
@@ -84,6 +85,11 @@ class Track:
     status: str = "preparing"
     message: str | None = None
     path: str | None = None
+    # Live progress while downloading: stage key, 0..1 overall, bytes of the stream.
+    stage: str | None = None
+    progress: float | None = None
+    bytes_done: int | None = None
+    bytes_total: int | None = None
 
     def public(self) -> dict[str, Any]:
         return self.__dict__.copy()
@@ -320,6 +326,7 @@ class JobManager:
                         self._publish(job)
                         continue
 
+                token = progress.reporter.set(self._progress_reporter(job, track, converting)) if track else None
                 try:
                     await downloader.download(item)
                 except GamdlDownloaderSyncedLyricsOnlyError:
@@ -346,21 +353,51 @@ class JobManager:
                     if track and not media.partial:
                         track.path = item.final_path
                         if media_type in {"songs", "library-songs"} and os.path.exists(item.final_path):
+                            progress.report("finish")
                             await self._tag_extras(item, settings, log)
                             if settings.save_motion_cover:
                                 await self._save_motion(item, settings, log, motion_done)
                         if converting and os.path.exists(item.final_path):
-                            track.message = "변환 중…"
-                            self._publish(job)
+                            progress.report("convert")
                             await self._convert(track, item, settings, log)
                         track.status = "done"
+                if token is not None:
+                    progress.reporter.reset(token)
                 if track:
+                    track.stage = None
+                    track.progress = 1.0 if track.status == "done" else None
                     self._publish(job)
         except GamdlInterfaceUrlParseError as e:
             log.error(f"지원하지 않는 URL입니다: {e}")
             job.error = f"지원하지 않는 URL: {url}"
         except PromptCancelledError:
             log.warning("선택이 취소되어 이 URL을 건너뜁니다")
+
+    def _progress_reporter(self, job: Job, track: Track, converting: bool):
+        """Turns stage reports into an overall 0..1 for the track (download is
+        most of the time; decrypting, tagging and converting follow)."""
+        end = 0.7 if converting else 0.8
+        starts = {"download": 0.02, "decrypt": end, "cover": 0.88, "tags": 0.92, "finish": 0.95, "convert": 0.96}
+        last = {"t": 0.0, "stage": None}
+
+        def report(stage: str, done: int | None, total: int | None) -> None:
+            # gamdl also fetches the cover while preparing the item; only the
+            # one after the audio is in counts as a step.
+            if stage == "cover" and (track.progress or 0.0) < end:
+                return
+            value = starts.get(stage, track.progress or 0.0)
+            if stage == "download":
+                track.bytes_done, track.bytes_total = done, total
+                if done is not None and total:
+                    value = 0.02 + (end - 0.02) * min(1.0, done / total)
+            track.stage = stage
+            track.progress = max(track.progress or 0.0, value)
+            now = time.monotonic()
+            if stage != last["stage"] or now - last["t"] > 0.35:
+                last.update(t=now, stage=stage)
+                self._publish(job)
+
+        return report
 
     async def _tag_extras(self, item, settings, log) -> None:
         try:

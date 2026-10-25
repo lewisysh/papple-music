@@ -65,7 +65,7 @@ MP3_BITRATES = ["320k", "256k", "192k", "V0"]
 class Settings(BaseModel):
     # General
     output_path: str = Field(
-        default_factory=lambda: _env("OUTPUT_PATH", str(Path.home() / "Music" / "gamdl"))
+        default_factory=lambda: _env("OUTPUT_PATH", str(Path.home() / "Music" / "Papple Music"))
     )
     temp_path: str = Field(default_factory=lambda: _env("TEMP_PATH", str(DATA_DIR / "tmp")))
     cookies_path: str = Field(

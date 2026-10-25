@@ -159,7 +159,7 @@ Your browser opens <http://127.0.0.1:8765>. That's it! 🎉
 **3. Sign in** — searching and browsing work right away. To download and play, set up one of the [sign-in options](#signing-in-cookies-vs-wrapper).
 
 > [!TIP]
-> - Settings, cookies and caches live in `~/.gamdl-web/`; music is saved to `~/Music/gamdl/` by default (change it in Settings).
+> - Settings, cookies and caches live in `~/.gamdl-web/`; music is saved to `~/Music/Papple Music/` by default (change it in Settings).
 > - The UI follows your browser language. Switch between **English** and **한국어** at the top of the Settings page.
 > - Next time, `uv run papple-music --open` is all you need.
 

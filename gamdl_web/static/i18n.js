@@ -556,7 +556,14 @@ const I18N_EN = {
 "wrapper가 응답하지 않습니다. Docker 로그를 확인하세요.": "The wrapper isn't responding. Check the Docker log.",
 "APK에 {}이(가) 없습니다": "{} is missing from the APK",
 "{} 해시가 맞지 않습니다 (APK 버전을 확인하세요)": "{} hash mismatch (check the APK version)",
-"OrbStack 또는 Docker Desktop이 설치되어 있지 않습니다": "OrbStack or Docker Desktop isn't installed"
+"OrbStack 또는 Docker Desktop이 설치되어 있지 않습니다": "OrbStack or Docker Desktop isn't installed",
+"다운로드 중 {}": "Downloading {}",
+"복호화 중": "Decrypting",
+"커버 받는 중": "Getting the cover",
+"태그 쓰는 중": "Writing tags",
+"마무리 중": "Finishing",
+"변환 중": "Converting",
+"곡 정보 가져오는 중…": "Getting song info…"
 };
 
 const i18n = (() => {
@@ -632,7 +639,7 @@ const i18n = (() => {
   const origAttrs = new WeakMap();
   // Names of songs, albums, playlists and people are content, not UI text.
   const CONTENT = ".sb-playlists, .sb-profile-text, .song-title, .card-title, .sg-text b, .recent-text b, .q-text, "
-    + ".pl-text, .fp-text, .fp-head-text, .video-text, .job-title, .t-title, .detail-head h1, .dl-meta h3, .info-head h2";
+    + ".pl-text, .fp-text, .fp-head-text, .video-text, .job-title, .t-title, .jp-title, .detail-head h1, .dl-meta h3, .info-head h2";
   const skip = (el) => el?.closest?.(`script, style, textarea, [data-no-i18n], ${CONTENT}`);
   const skipAttr = (el) => el?.closest?.("[data-no-i18n], .sb-playlists");
 
