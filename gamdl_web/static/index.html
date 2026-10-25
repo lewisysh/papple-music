@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#161617" media="(prefers-color-scheme: dark)">
+  <title>Papple Music</title>
+  <link rel="icon" type="image/png" sizes="64x64" href="/brand/icon-64.png">
+  <link rel="apple-touch-icon" href="/brand/icon-180.png">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <a class="sb-brand" href="/search" data-nav aria-label="Papple Music">
+        <img class="sb-mark" src="/brand/mark.svg" alt="" width="30" height="38">
+        <span class="sb-wordmark" aria-hidden="true"></span>
+        <span class="sb-brand-text">
+          <span class="sb-name">Papple Music</span>
+          <span class="sb-tagline">Enhanced Downloader</span>
+        </span>
+      </a>
+
+      <nav class="sb-nav" role="tablist">
+        <button role="tab" data-tab="search" class="active">
+          <span class="sb-icon" data-icon="search"></span>
+          <span class="sb-label">검색</span>
+        </button>
+        <button role="tab" data-tab="download">
+          <span class="sb-icon" data-icon="download"></span>
+          <span class="sb-label">다운로드</span>
+          <span class="sb-badge hidden" id="badge-active"></span>
+        </button>
+        <button role="tab" data-tab="wrapper">
+          <span class="sb-icon" data-icon="server"></span>
+          <span class="sb-label">Wrapper</span>
+        </button>
+        <button role="tab" data-tab="settings">
+          <span class="sb-icon" data-icon="sliders"></span>
+          <span class="sb-label">설정</span>
+        </button>
+      </nav>
+
+      <div class="sb-library hidden" id="sb-library">
+        <div class="sb-heading">보관함 플레이리스트</div>
+        <div class="sb-playlists" id="sb-playlists"></div>
+      </div>
+
+      <div class="sb-status">
+        <a class="sb-profile hidden" id="sb-profile" target="_blank" rel="noopener" title="Apple Music 프로필 열기">
+          <span class="sb-avatar"></span>
+          <span class="sb-profile-text"><b></b><small></small></span>
+        </a>
+        <button class="sb-status-row" id="sb-wrapper" data-goto="wrapper">
+          <span class="dot"></span><span>Wrapper</span><span class="sb-status-value">확인 중</span>
+        </button>
+        <div class="sb-status-row" id="sb-live">
+          <span class="dot"></span><span>서버</span><span class="sb-status-value">연결 중</span>
+        </div>
+      </div>
+    </aside>
+
+    <main class="content">
+      <a class="sb-brand mobile-brand" href="/search" data-nav aria-label="Papple Music">
+        <img class="sb-mark" src="/brand/mark.svg" alt="" width="26" height="33">
+        <span class="sb-wordmark" aria-hidden="true"></span>
+        <span class="sb-brand-text">
+          <span class="sb-name">Papple Music</span>
+          <span class="sb-tagline">Enhanced Downloader</span>
+        </span>
+      </a>
+      <!-- 검색 -->
+      <section id="tab-search" class="page active">
+        <header class="page-head">
+          <h1>검색</h1>
+          <p>노래 · 앨범 · 아티스트 이름으로 찾거나 Apple Music 링크를 붙여넣으세요. 다운로드 버튼을 누르면 음질을 고를 수 있어요.</p>
+        </header>
+
+        <div class="composer">
+          <div class="url-field">
+            <span class="url-icon" data-icon="search"></span>
+            <textarea id="search-input" rows="1" spellcheck="false" autocomplete="off" enterkeyhint="search"
+              placeholder="아티스트, 노래, 앨범 또는 링크"></textarea>
+            <button id="btn-search" class="btn btn-primary">검색</button>
+          </div>
+          <div class="suggest hidden" id="suggest" role="listbox" aria-label="검색 제안"></div>
+        </div>
+
+        <div class="search-head hidden" id="search-head">
+          <div class="segmented" id="search-filter" role="radiogroup" aria-label="검색 종류">
+            <button type="button" data-value="all" class="active">전체</button>
+            <button type="button" data-value="songs">노래</button>
+            <button type="button" data-value="albums">앨범</button>
+            <button type="button" data-value="artists">아티스트</button>
+            <button type="button" data-value="playlists">플레이리스트</button>
+            <button type="button" data-value="music-videos">뮤직비디오</button>
+          </div>
+          <span id="search-meta" class="secondary"></span>
+        </div>
+        <div id="search-results"></div>
+        <div id="search-empty" class="search-home">
+          <section class="home-section hidden" id="home-recent">
+            <div class="search-section-head">
+              <h2>최근 검색</h2>
+              <button class="btn-link" id="recent-clear">지우기</button>
+            </div>
+            <div class="recent-items" id="recent-items"></div>
+            <div id="recent" class="recent"></div>
+          </section>
+          <section class="home-section">
+            <div class="search-section-head"><h2>카테고리 둘러보기</h2></div>
+            <div class="browse-grid" id="browse"><div class="loading"><span class="spinner big"></span></div></div>
+          </section>
+        </div>
+      </section>
+
+      <!-- 앨범 · 아티스트 · 플레이리스트 -->
+      <section id="tab-detail" class="page">
+        <div id="detail"></div>
+      </section>
+
+      <!-- 다운로드 -->
+      <section id="tab-download" class="page">
+        <header class="page-head page-head-row">
+          <div>
+            <h1>다운로드</h1>
+            <p id="queue-summary">대기열과 진행 상황</p>
+          </div>
+          <div class="head-actions">
+            <button id="btn-open-folder" class="btn btn-gray">Finder에서 폴더 열기</button>
+            <button id="btn-clear" class="btn btn-gray hidden">완료 항목 지우기</button>
+          </div>
+        </header>
+        <div id="jobs" class="jobs"></div>
+        <div id="jobs-empty" class="empty">
+          <img src="/brand/icon-128.png" alt="" width="72" height="72">
+          <p class="empty-title">대기열이 비어 있습니다</p>
+          <p class="empty-sub">검색에서 곡을 찾거나 링크를 붙여넣으면 여기에 나타나요.</p>
+          <button class="btn btn-tinted" data-goto="search" style="margin-top:16px">검색으로 가기</button>
+        </div>
+      </section>
+
+      <!-- Wrapper -->
+      <section id="tab-wrapper" class="page narrow">
+        <header class="page-head">
+          <h1>Wrapper</h1>
+          <p>ALAC 무손실을 받기 위한 복호화 서버입니다.</p>
+        </header>
+
+        <div class="group-head">
+          <span>연결 상태</span>
+          <button id="btn-wrapper-refresh" class="btn-link">새로고침</button>
+        </div>
+        <div class="group" id="wrapper-status"><div class="row"><span class="row-label secondary">확인 중…</span></div></div>
+
+        <div class="group-head"><span>Apple ID</span></div>
+        <div class="group" id="wrapper-login"></div>
+        <p class="group-foot">비밀번호는 저장하지 않고 wrapper로만 전달합니다. 로그인 세션은 wrapper 컨테이너에 유지돼요.</p>
+
+        <div class="group-head">
+          <span>Docker 컨테이너</span>
+          <code id="docker-name" class="secondary"></code>
+        </div>
+        <div class="group" id="docker-body"><div class="row"><span class="row-label secondary">확인 중…</span></div></div>
+        <div id="docker-logs-wrap" class="hidden">
+          <div class="group-head">
+            <span>최근 로그</span>
+            <button id="btn-docker-logs-refresh" class="btn-link">새로고침</button>
+          </div>
+          <pre id="docker-logs" class="logbox"></pre>
+        </div>
+
+        <div class="group-head"><span>설치 가이드</span></div>
+        <div class="group guide">
+          <ol>
+            <li><a href="https://orbstack.dev" target="_blank" rel="noopener">OrbStack</a>(권장) 또는
+              <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener">Docker Desktop</a>을 설치하고 실행합니다.</li>
+            <li>Apple Music APK(<code>3.6.0-beta-1109</code>)를 준비합니다. 라이브러리는 wrapper-v2에 고정된 해시로 검증합니다.</li>
+            <li>프로젝트 폴더에서 설치 스크립트를 실행합니다. 첫 빌드는 10분 이상 걸릴 수 있어요.
+              <pre class="code">./scripts/setup-wrapper.sh ~/Downloads/AppleMusic_3.6.0-beta-1109.apk</pre></li>
+            <li>위의 <b>Apple ID</b>에서 로그인하고 2단계 인증 코드를 입력합니다.</li>
+            <li>다운로드 화면에서 <b>Wrapper</b>를 켜고 <b>무손실</b>을 고릅니다.</li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- 설정 -->
+      <section id="tab-settings" class="page narrow">
+        <header class="page-head">
+          <h1>설정</h1>
+          <p>저장 위치, 음질, 파일 이름, 메타데이터를 정합니다.</p>
+        </header>
+
+        <div class="group-head">
+          <span>Apple Music 쿠키</span>
+          <button id="btn-account-cookies" class="btn-link">구독 확인</button>
+        </div>
+        <div class="group">
+          <div class="row">
+            <span class="row-label">상태</span>
+            <span id="cookies-status" class="row-value secondary">확인 중…</span>
+          </div>
+          <form id="token-form" class="row" autocomplete="off">
+            <input type="password" id="token-input" class="inline-input" placeholder="media-user-token 붙여넣기" spellcheck="false">
+            <button type="submit" class="btn btn-tinted">저장</button>
+          </form>
+          <div class="row row-actions">
+            <label class="btn btn-gray file-btn">
+              <input type="file" id="cookies-file" accept=".txt,text/plain">
+              cookies.txt 업로드
+            </label>
+            <button id="btn-cookies-delete" class="btn btn-gray destructive">삭제</button>
+          </div>
+        </div>
+        <p class="group-foot">wrapper 없이 받을 때 필요합니다. music.apple.com에 로그인한 브라우저에서
+          <a href="https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc" target="_blank" rel="noopener">Get cookies.txt LOCALLY</a> 또는
+          <a href="https://addons.mozilla.org/addon/export-cookies-txt" target="_blank" rel="noopener">Export Cookies</a>로 내보내세요.</p>
+
+        <form id="settings-form" autocomplete="off"></form>
+      </section>
+    </main>
+  </div>
+
+  <div class="player hidden" id="player" aria-label="플레이어">
+    <div class="pl-controls">
+      <button class="pl-btn pl-small" id="pl-shuffle" title="셔플" aria-label="셔플"></button>
+      <button class="pl-btn" id="pl-prev" title="이전" aria-label="이전 곡"></button>
+      <button class="pl-btn pl-main" id="pl-play" title="재생" aria-label="재생"></button>
+      <button class="pl-btn" id="pl-next" title="다음" aria-label="다음 곡"></button>
+      <button class="pl-btn pl-small" id="pl-repeat" title="반복" aria-label="반복"></button>
+    </div>
+    <div class="pl-now" id="pl-now">
+      <a class="pl-art" id="pl-art" data-nav href="#"></a>
+      <div class="pl-info">
+        <div class="pl-text"><b id="pl-title"></b><small id="pl-sub"></small></div>
+        <div class="pl-times"><span id="pl-cur">0:00</span><span id="pl-dur">0:00</span></div>
+        <div class="pl-progress" id="pl-progress"><span class="pl-hover" id="pl-hover"></span><span class="pl-bar" id="pl-bar"></span></div>
+      </div>
+      <button class="pl-quality" id="pl-quality"></button>
+    </div>
+    <div class="pl-right">
+      <button class="pl-btn" id="pl-more" title="더 보기" aria-label="더 보기"></button>
+      <button class="pl-btn" id="pl-lyrics" title="가사" aria-label="가사"></button>
+      <button class="pl-btn" id="pl-queue" title="다음 재생" aria-label="다음 재생"></button>
+      <button class="pl-btn" id="pl-airplay" title="AirPlay · 다른 기기로 재생" aria-label="AirPlay"></button>
+      <div class="pl-volume" id="pl-volume-wrap">
+        <input type="range" id="pl-volume" min="0" max="1" step="0.01" value="1" aria-label="볼륨">
+        <button class="pl-btn" id="pl-vol-btn" title="음량" aria-label="음소거"></button>
+      </div>
+    </div>
+    <audio id="audio" preload="auto"></audio>
+  </div>
+
+  <div class="fp hidden" id="fp" role="dialog" aria-label="지금 재생 중">
+    <div class="fp-bg" id="fp-bg"></div>
+    <button class="fp-grabber" id="fp-close" aria-label="플레이어 닫기"><span></span></button>
+    <button class="fp-head" id="fp-head" aria-label="앨범 아트 보기">
+      <span class="fp-head-art" id="fp-head-art"></span>
+      <span class="fp-head-text"><b data-fp="title"></b><small data-fp="artist"></small></span>
+    </button>
+    <div class="fp-stage" id="fp-stage"><div class="fp-art" id="fp-art"></div></div>
+    <div class="fp-meta fp-fade">
+      <div class="fp-text"><b data-fp="title"></b><button class="fp-artist" id="fp-artist" data-fp="artist"></button></div>
+      <button class="fp-btn fp-more" id="fp-more" aria-label="더 보기"></button>
+    </div>
+    <div class="fp-fade">
+      <div class="fp-progress" id="fp-progress"><span class="fp-bar" id="fp-bar"></span></div>
+      <div class="fp-times"><span id="fp-cur">0:00</span><button class="fp-quality" id="fp-quality"></button><span id="fp-dur">0:00</span></div>
+    </div>
+    <div class="fp-controls fp-fade">
+      <button class="fp-btn" id="fp-prev" aria-label="이전 곡"></button>
+      <button class="fp-btn fp-play" id="fp-play" aria-label="재생/일시정지"></button>
+      <button class="fp-btn" id="fp-next" aria-label="다음 곡"></button>
+    </div>
+    <div class="fp-volume fp-fade">
+      <span id="fp-vol-lo"></span><input type="range" id="fp-volume" min="0" max="1" step="0.01" value="1" aria-label="볼륨"><span id="fp-vol-hi"></span>
+    </div>
+    <div class="fp-actions fp-fade">
+      <button class="fp-btn" id="fp-lyrics" aria-label="가사"></button>
+      <button class="fp-btn" id="fp-airplay" aria-label="AirPlay"></button>
+      <button class="fp-btn" id="fp-queue" aria-label="다음 재생"></button>
+    </div>
+  </div>
+
+  <aside class="side-panel" id="side-panel" aria-label="재생 목록과 가사">
+    <div class="sp-head">
+      <div class="segmented" id="sp-tabs">
+        <button type="button" data-panel="queue" class="active">다음 재생</button>
+        <button type="button" data-panel="lyrics">가사</button>
+      </div>
+      <button class="icon-btn" id="sp-close" aria-label="닫기"></button>
+    </div>
+    <div class="sp-body" id="sp-queue"></div>
+    <div class="sp-body lyrics hidden" id="sp-lyrics"></div>
+  </aside>
+
+  <div class="ctx-menu hidden" id="ctx-menu" role="menu"></div>
+
+  <div id="info-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="sheet info-sheet">
+      <button class="icon-btn desc-close" id="info-close" aria-label="닫기"></button>
+      <div id="info-body"></div>
+    </div>
+  </div>
+
+  <div id="video-modal" class="modal video-modal hidden" role="dialog" aria-modal="true" aria-labelledby="vm-title">
+    <div class="video-sheet">
+      <div class="video-head">
+        <div class="video-text"><b id="vm-title"></b><small id="vm-sub"></small></div>
+        <span class="video-status" id="vm-status"></span>
+        <button class="icon-btn" id="vm-close" aria-label="닫기"></button>
+      </div>
+      <div class="video-frame">
+        <video id="vm-video" controls playsinline></video>
+        <div class="video-loading hidden" id="vm-loading"><span class="spinner big"></span><span>전체 영상을 준비하는 중…</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="savebar" id="savebar" aria-hidden="true">
+    <span>저장하지 않은 변경사항</span>
+    <button id="btn-reset" class="btn btn-gray">되돌리기</button>
+    <button id="btn-save" class="btn btn-primary">저장</button>
+  </div>
+
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="prompt-title">
+    <div class="sheet">
+      <div class="sheet-head">
+        <h3 id="prompt-title"></h3>
+        <span id="prompt-queue" class="secondary"></span>
+      </div>
+      <label id="prompt-search" class="search hidden">
+        <span data-icon="search"></span>
+        <input id="prompt-filter" type="search" placeholder="검색">
+      </label>
+      <div id="prompt-tools" class="sheet-tools hidden">
+        <button id="prompt-all" class="btn-link">모두 선택</button>
+        <button id="prompt-none" class="btn-link">선택 해제</button>
+        <span id="prompt-count" class="secondary"></span>
+      </div>
+      <ul id="prompt-choices" class="choices"></ul>
+      <div class="sheet-actions">
+        <button id="prompt-cancel" class="btn btn-gray">건너뛰기</button>
+        <button id="prompt-ok" class="btn btn-primary">확인</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="dl-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="dl-title">
+    <div class="sheet dl-sheet">
+      <div class="dl-head">
+        <span class="dl-art" id="dl-art"></span>
+        <div class="dl-meta">
+          <h3 id="dl-title"></h3>
+          <p id="dl-sub" class="secondary"></p>
+        </div>
+      </div>
+      <div class="dl-label"><span>음질 선택</span><span id="dl-source" class="secondary"></span></div>
+      <ul id="dl-options" class="choices dl-options"></ul>
+      <p id="dl-note" class="hint"></p>
+      <div class="sheet-actions">
+        <span id="dl-saveas" class="secondary dl-saveas"></span>
+        <button id="dl-cancel" class="btn btn-gray">취소</button>
+        <button id="dl-ok" class="btn btn-primary">다운로드</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="desc-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="desc-title">
+    <div class="sheet desc-sheet">
+      <button class="icon-btn desc-close" id="desc-close" aria-label="닫기"></button>
+      <h2 id="desc-title"></h2>
+      <p id="desc-sub" class="secondary"></p>
+      <div id="desc-body" class="desc-body"></div>
+    </div>
+  </div>
+
+  <div id="tip" class="tip hidden" role="tooltip"></div>
+  <div id="toasts" aria-live="polite"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

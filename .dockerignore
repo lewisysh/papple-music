@@ -1,0 +1,13 @@
+.git/
+.venv/
+**/__pycache__/
+data/
+downloads/
+vendor/
+build/
+dist/
+docs/
+deploy/
+cdp-profile/
+*.apk
+*.apkm

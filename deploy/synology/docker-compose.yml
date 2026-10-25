@@ -1,0 +1,47 @@
+# Papple Music - Synology (x86_64) / any x86 NAS
+#
+# 1. Import papple-music.tar and wrapper-v2.tar as images
+#    (Container Manager > Image > Add > Add from file).
+# 2. Create a project from this file (Container Manager > Project > Create).
+# 3. Open http://<NAS-IP>:8765 and sign in with any username + the password below.
+#
+# Apple ID login and cookies start empty; sign in from the Wrapper tab.
+
+services:
+  wrapper:
+    image: wrapper-v2:x86_64
+    container_name: papple-wrapper
+    restart: unless-stopped
+    cap_add:
+      - SYS_ADMIN
+      - SYS_CHROOT
+      - SYS_PTRACE
+    security_opt:
+      - apparmor:unconfined
+    # No published ports: only the web container talks to the wrapper.
+    volumes:
+      # Apple login session (empty until you sign in).
+      - ./data/wrapper:/app/rootfs/data/data/com.apple.android.music/files
+
+  web:
+    image: papple-music:latest
+    container_name: papple-music
+    restart: unless-stopped
+    depends_on:
+      - wrapper
+    environment:
+      GAMDL_WEB_PASSWORD: "CHANGE-ME"
+      GAMDL_WEB_USE_WRAPPER: "1"
+      GAMDL_WEB_WRAPPER_URL: http://wrapper
+      GAMDL_WEB_WRAPPER_DECRYPT_HOST: wrapper
+      GAMDL_WEB_WRAPPER_DECRYPT_PORT: "10020"
+      # Downloaded files stay editable from SMB / File Station.
+      GAMDL_WEB_UMASK: "000"
+      TZ: Asia/Seoul
+    ports:
+      - "8765:8765"
+    volumes:
+      # Settings, cookies and caches (empty on first start).
+      - ./data/web:/data
+      # Where music is saved. Point it at a shared folder, e.g. /volume1/music/AppleMusic:/downloads
+      - ./downloads:/downloads
