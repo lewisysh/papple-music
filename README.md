@@ -19,8 +19,12 @@
 
 <p align="center">
   <a href="https://github.com/lewisysh/papple-music/releases/download/v1.0.0/Papple-Music-1.0.0-arm64.dmg"><img alt="Download for macOS" src="https://img.shields.io/badge/Download%20for%20macOS-v1.0.0%20%C2%B7%20Apple%20Silicon-fa2d48?style=for-the-badge"></a>
-  <br>
-  <sub><a href="https://github.com/lewisysh/papple-music/releases/download/v1.0.0/Papple-Music-1.0.0-arm64.dmg">Papple-Music-1.0.0-arm64.dmg</a> · macOS 12+ · <a href="https://github.com/lewisysh/papple-music/releases">all releases</a></sub>
+</p>
+
+<h3 align="center"><a href="https://github.com/lewisysh/papple-music/releases/download/v1.0.0/Papple-Music-1.0.0-arm64.dmg">Papple-Music-1.0.0-arm64.dmg</a></h3>
+
+<p align="center">
+  <b>Apple Silicon · macOS 12 or later</b> · <a href="#mac-app-easiest">install guide</a> · <a href="https://github.com/lewisysh/papple-music/releases">all releases</a>
 </p>
 
 <p align="center">
@@ -34,11 +38,47 @@ Papple Music is a self-hosted web app that puts a polished, Apple Music–like i
 
 ---
 
+## Mac app (easiest)
+
+No terminal needed — Python, all libraries and ffmpeg are inside the app.
+
+1. Download **[Papple-Music-1.0.0-arm64.dmg](https://github.com/lewisysh/papple-music/releases/download/v1.0.0/Papple-Music-1.0.0-arm64.dmg)** (Apple Silicon Macs, macOS 12 or later). Older and newer versions are on the [**Releases**](https://github.com/lewisysh/papple-music/releases) page.
+2. Open it and drag **Papple Music** into **Applications**.
+3. Open **Papple Music**. It opens in its own window and sits in the Dock like any other app.
+
+| | |
+| --- | --- |
+| Close the window | Papple Music keeps running; click the Dock icon to bring it back |
+| Right-click the Dock icon | Open Download Folder · Open in Browser · Open at Login |
+| ⌘Q (or Quit in the Dock menu) | Stops the server |
+
+> [!IMPORTANT]
+> **First launch:** the app isn't signed with an Apple Developer ID, so macOS blocks it the first time.
+> Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to "Papple Music".
+> (Or run `xattr -dr com.apple.quarantine "/Applications/Papple Music.app"` once.)
+
+The app uses the same data folder (`~/.gamdl-web/`) as the source version. Everything works with just the app and your [cookies](#signing-in-cookies-vs-wrapper); for ALAC lossless, the [setup wizard](#setting-up-the-wrapper-alac-lossless) in the Wrapper tab installs the wrapper for you.
+
+<details>
+<summary><b>Build the app yourself</b></summary>
+
+```bash
+git clone https://github.com/lewisysh/papple-music.git
+cd papple-music
+./scripts/build-macapp.sh
+# → dist/macapp/Papple Music.app and dist/Papple-Music-<version>-<arch>.dmg
+```
+
+The app is built for the CPU of the Mac you build on (Apple Silicon or Intel).
+</details>
+
+---
+
 ## Contents
 
-1. [Features](#features)
-2. [Screenshots](#screenshots)
-3. [Mac app (easiest)](#mac-app-easiest)
+1. [Mac app (easiest)](#mac-app-easiest)
+2. [Features](#features)
+3. [Screenshots](#screenshots)
 4. [Requirements](#requirements)
 5. [Quick start from source](#quick-start-from-source)
 6. [Signing in: cookies vs. wrapper](#signing-in-cookies-vs-wrapper)
@@ -92,42 +132,6 @@ Papple Music is a self-hosted web app that puts a polished, Apple Music–like i
   <img src="docs/screenshots/phone.png" alt="Phone: album with mini player, full-screen player, lyrics" width="760"><br>
   <sub>On a phone — album page with the mini player → full-screen player → live lyrics</sub>
 </p>
-
----
-
-## Mac app (easiest)
-
-No terminal needed — Python, all libraries and ffmpeg are inside the app.
-
-1. Download **[Papple-Music-1.0.0-arm64.dmg](https://github.com/lewisysh/papple-music/releases/download/v1.0.0/Papple-Music-1.0.0-arm64.dmg)** (Apple Silicon Macs, macOS 12 or later). Older and newer versions are on the [**Releases**](https://github.com/lewisysh/papple-music/releases) page.
-2. Open it and drag **Papple Music** into **Applications**.
-3. Open **Papple Music**. It opens in its own window and sits in the Dock like any other app.
-
-| | |
-| --- | --- |
-| Close the window | Papple Music keeps running; click the Dock icon to bring it back |
-| Right-click the Dock icon | Open Download Folder · Open in Browser · Open at Login |
-| ⌘Q (or Quit in the Dock menu) | Stops the server |
-
-> [!IMPORTANT]
-> **First launch:** the app isn't signed with an Apple Developer ID, so macOS blocks it the first time.
-> Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to "Papple Music".
-> (Or run `xattr -dr com.apple.quarantine "/Applications/Papple Music.app"` once.)
-
-The app uses the same data folder (`~/.gamdl-web/`) as the source version. Everything works with just the app and your [cookies](#signing-in-cookies-vs-wrapper); for ALAC lossless, the [setup wizard](#setting-up-the-wrapper-alac-lossless) in the Wrapper tab installs the wrapper for you.
-
-<details>
-<summary><b>Build the app yourself</b></summary>
-
-```bash
-git clone https://github.com/lewisysh/papple-music.git
-cd papple-music
-./scripts/build-macapp.sh
-# → dist/macapp/Papple Music.app and dist/Papple-Music-<version>-<arch>.dmg
-```
-
-The app is built for the CPU of the Mac you build on (Apple Silicon or Intel).
-</details>
 
 ---
 
