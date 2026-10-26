@@ -557,7 +557,7 @@ $("#btn-search").addEventListener("click", submitSearch);
 // when unsure, the others to pick from. Only rows found with confidence start
 // checked, so nothing questionable is downloaded without a look.
 const imp = { entries: [], filter: "all", seq: 0, done: [] };
-const IMPORT_PARALLEL = 3;
+const IMPORT_PARALLEL = 2;
 const IMPORT_STATUS = { sure: "찾음", check: "확인 필요", none: "못 찾음", have: "이미 받음", wait: "찾는 중" };
 
 function importChosen(e) {

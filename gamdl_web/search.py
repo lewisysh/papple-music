@@ -34,6 +34,10 @@ class SearchError(Exception):
     pass
 
 
+class SearchRateLimited(SearchError):
+    """Apple answered 429 even after switching tokens."""
+
+
 ARTIST_VIEWS = {
     "top-songs": "인기곡",
     "latest-release": "최신 발매",
@@ -309,7 +313,7 @@ class SearchService:
             if response.status_code == 404:
                 raise SearchError("Apple Music에서 찾을 수 없습니다")
             if response.status_code == 429:
-                raise SearchError("Apple Music 요청이 너무 많습니다. 잠시 후 다시 시도하세요.")
+                raise SearchRateLimited("Apple Music 요청이 너무 많습니다. 잠시 후 다시 시도하세요.")
             if response.is_error:
                 raise SearchError(f"Apple Music이 HTTP {response.status_code}로 응답했습니다")
             return response.json()

@@ -7,6 +7,7 @@ version (Extended Mix, a remix, ...) all line up.
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import json
@@ -18,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import DATA_DIR
-from .search import SearchService, _item
+from .search import SearchRateLimited, SearchService, _item
 
 IMPORTS_PATH = DATA_DIR / "imports.json"
 MAX_LINES = 500
@@ -61,6 +62,14 @@ def _version_words(text: str) -> set[str]:
     if " - " in (text or ""):
         words |= set(_norm(text.split(" - ", 1)[1]).split())
     return words
+
+
+def _bracket_words(text: str) -> set[str]:
+    """Words in brackets other than featured artists and harmless labels."""
+    words = set()
+    for part in BRACKETS.findall(FEAT.sub("", text or "")):
+        words |= set(_norm(part).split())
+    return words - NEUTRAL_WORDS
 
 
 def _base_title(text: str) -> str:
@@ -150,9 +159,42 @@ def score(artist: str, title: str, item: dict) -> float:
         want_br = " ".join(_norm(b) for b in BRACKETS.findall(title))
         got_br = " ".join(_norm(b) for b in BRACKETS.findall(item.get("name") or ""))
         penalty += 0.15 * (1 - SequenceMatcher(None, want_br, got_br).ratio())
+    want_extra = _bracket_words(title)
+    got_extra = _bracket_words(item.get("name") or "") - want_extra
+    if got_extra and not extra:
+        penalty += 0.1
     if UNWANTED.search(f"{item.get('name')} {item.get('artist')} {item.get('album')}") and not UNWANTED.search(f"{artist} {title}"):
         penalty += 0.5
     return max(0.0, min(1.0, title_sim * 0.55 + artist_sim * 0.45 - penalty))
+
+
+# Big lists fire hundreds of searches; Apple throttles bursts, so space them
+# out and back off when it says "too many requests".
+MIN_INTERVAL = 0.35
+BACKOFF = (5, 15, 40)
+_pace = {"next": 0.0}
+_pace_lock = asyncio.Lock()
+
+
+async def _paced(call):
+    for attempt in range(len(BACKOFF) + 1):
+        async with _pace_lock:
+            wait = _pace["next"] - time.monotonic()
+            if wait > 0:
+                await asyncio.sleep(wait)
+            _pace["next"] = time.monotonic() + MIN_INTERVAL
+        try:
+            return await call()
+        except SearchRateLimited:
+            if attempt == len(BACKOFF):
+                raise
+            async with _pace_lock:
+                _pace["next"] = max(_pace["next"], time.monotonic() + BACKOFF[attempt])
+
+
+async def _search(search: SearchService, query: str) -> list[dict]:
+    data = await _paced(lambda: search.search(query, ["songs"], 10, 0))
+    return data["results"]["songs"]["items"]
 
 
 # Stores (and languages) whose catalog carries local titles for a script.
@@ -172,9 +214,9 @@ async def _local_matches(search: SearchService, artist: str, title: str, candida
     if not stores:
         return
     for storefront, language in stores:
-        raw = await search._get(f"/v1/catalog/{storefront}/search", {
+        raw = await _paced(lambda: search._get(f"/v1/catalog/{storefront}/search", {
             "term": text.strip(), "types": "songs", "limit": 10, "extend": "audioTraits", "l": language,
-        })
+        }))
         local = [_item(r) for r in ((raw.get("results") or {}).get("songs") or {}).get("data", [])]
         hits = sorted(((max(score(artist, title, it), score(title, artist, it) if artist else 0.0), it) for it in local),
                       key=lambda h: h[0], reverse=True)[:3]
@@ -183,7 +225,8 @@ async def _local_matches(search: SearchService, artist: str, title: str, candida
                 continue
             own = candidates.get(it["id"])
             if own is None:
-                data = await search._get(f"/v1/catalog/{{storefront}}/songs/{it['id']}", {"extend": "audioTraits"}, missing_ok=True)
+                data = await _paced(lambda: search._get(
+                    f"/v1/catalog/{{storefront}}/songs/{it['id']}", {"extend": "audioTraits"}, missing_ok=True))
                 rows = data.get("data") or []
                 if not rows:
                     continue  # not available in the account's store
@@ -200,8 +243,11 @@ async def match(search: SearchService, artist: str, title: str) -> dict[str, Any
         queries.append(f"{title} {artist}")  # the line may have been "title - artist"
     candidates: dict[str, dict] = {}
     for i, query in enumerate(queries):
-        data = await search.search(query, ["songs"], 10, 0)
-        for rank, item in enumerate(data["results"]["songs"]["items"]):
+        items = await _search(search, query)
+        if not items and i == 0:
+            await asyncio.sleep(1.5)  # throttled answers can come back empty
+            items = await _search(search, query)
+        for rank, item in enumerate(items):
             s = max(score(artist, title, item), score(title, artist, item) if artist else 0.0)
             prev = candidates.get(item["id"])
             if prev is None or s > prev["score"]:
@@ -211,7 +257,7 @@ async def match(search: SearchService, artist: str, title: str) -> dict[str, Any
             break
     if max((c["score"] for c in candidates.values()), default=0) < 0.82:
         await _local_matches(search, artist, title, candidates)
-    ranked = sorted(candidates.values(), key=lambda c: c["score"], reverse=True)[:5]
+    ranked = sorted(candidates.values(), key=lambda c: (-c["score"], c.get("rank", 99)))[:5]
     top = ranked[0]["score"] if ranked else 0
     if ranked and top < 0.5:
         # Names that can't be compared as text (뉴진스 - 하입보이 vs NewJeans - Hype Boy):
@@ -220,7 +266,9 @@ async def match(search: SearchService, artist: str, title: str) -> dict[str, Any
         return {"status": "check", "guess": True, "candidates": guesses}
     runner = ranked[1]["score"] if len(ranked) > 1 else 0
     # A near-tie between different recordings is a question for the user.
-    if top >= 0.82 and (top - runner >= 0.06 or _same_song(ranked[0], ranked[1])):
+    exact = _norm(ranked[0].get("name")) == _norm(title) or (
+        _base_title(ranked[0].get("name")) == _base_title(title) and not _bracket_words(ranked[0].get("name")))
+    if top >= 0.82 and (top - runner >= 0.06 or _same_song(ranked[0], ranked[1]) or (top >= 0.95 and exact)):
         status = "sure"
     elif top >= 0.5:
         status = "check"
