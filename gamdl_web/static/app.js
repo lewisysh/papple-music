@@ -1659,9 +1659,17 @@ function setStreamQuality(quality) {
   if (player.queue[player.index]) playCurrent({ keepTime: player.audio.currentTime });
 }
 $("#pl-quality").addEventListener("click", (e) => openQualityMenu(e.currentTarget));
-$("#pl-airplay").addEventListener("click", async () => {
+$("#pl-airplay").addEventListener("click", async (e) => {
   const a = player.audio;
-  if (a.webkitShowPlaybackTargetPicker) { a.webkitShowPlaybackTargetPicker(); return; }
+  if (a.webkitShowPlaybackTargetPicker) {
+    // Safari anchors the device list to the media element, which has no box of
+    // its own; park it under the button that was pressed first.
+    const r = e.currentTarget.getBoundingClientRect();
+    a.style.left = `${r.left + r.width / 2}px`;
+    a.style.top = `${r.top}px`;
+    a.webkitShowPlaybackTargetPicker();
+    return;
+  }
   if (a.remote?.prompt) {
     try { await a.remote.prompt(); } catch (err) { toast(err.name === "NotFoundError" ? "연결할 수 있는 기기를 찾지 못했습니다" : err.message, "err"); }
     return;
@@ -1674,6 +1682,9 @@ $("#pl-more").addEventListener("click", (e) => {
   if (t) openMenu(t, r.left, r.top, { above: true, opener: e.currentTarget });
 });
 
+// Out of the glass player (its backdrop filter would make it the containing
+// block), so the element can be placed in viewport coordinates for AirPlay.
+document.body.append(player.audio);
 const volume = $("#pl-volume");
 // iOS ignores audio.volume (the side buttons own it), so there the level goes
 // through a gain node instead. It's built on the first change below 100%, from a
@@ -2124,7 +2135,14 @@ $("#fp-play").addEventListener("click", () => player.play.click());
 $("#fp-prev").addEventListener("click", () => $("#pl-prev").click());
 $("#fp-next").addEventListener("click", () => step(1));
 $("#fp-quality").addEventListener("click", (e) => openQualityMenu(e.currentTarget));
-$("#fp-airplay").addEventListener("click", () => $("#pl-airplay").click());
+$("#fp-airplay").addEventListener("click", (e) => {
+  const a = player.audio;
+  if (!a.webkitShowPlaybackTargetPicker) { $("#pl-airplay").click(); return; }
+  const r = e.currentTarget.getBoundingClientRect();
+  a.style.left = `${r.left + r.width / 2}px`;
+  a.style.top = `${r.top}px`;
+  a.webkitShowPlaybackTargetPicker();
+});
 $("#fp-lyrics").addEventListener("click", () => openPanel("lyrics"));
 $("#fp-queue").addEventListener("click", () => openPanel("queue"));
 $("#fp-head").addEventListener("click", closePanel);

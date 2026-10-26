@@ -833,8 +833,10 @@ img.loaded { opacity: 1 !important; }
   --pl-left: 236px; --pl-right: 0px;
   position: fixed; z-index: 35; bottom: 16px;
   left: calc(var(--pl-left) + 24px); right: calc(var(--pl-right) + 24px);
-  /* About two thirds of the space beside the sidebar, centred. */
-  max-width: min(760px, max(520px, calc((100vw - var(--pl-left) - var(--pl-right) - 48px) * 0.67))); margin: 0 auto; height: 64px;
+  /* About 70% of the free width, centred, so there's always air on both sides;
+     narrow windows keep at least 5% each side instead of dropping below 480px. */
+  --pl-avail: calc(100vw - var(--pl-left) - var(--pl-right) - 48px);
+  max-width: min(760px, max(calc(var(--pl-avail) * 0.7), min(calc(var(--pl-avail) * 0.9), 480px))); margin: 0 auto; height: 64px;
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px;
   container: player / inline-size;
   padding: 0 14px; border-radius: 999px;
@@ -922,21 +924,24 @@ body.panel-open .player { --pl-right: 356px; }
 .pl-volume:hover #pl-volume, #pl-volume:focus-visible, #pl-volume:active { width: 92px; opacity: 1; margin: 0 4px 0 6px; }
 #pl-volume::-webkit-slider-thumb { -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.2), 0 1px 4px rgba(0, 0, 0, 0.3); }
 #pl-volume::-moz-range-thumb { width: 13px; height: 13px; border: 0; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); }
-@container player (max-width: 860px) {
+@container player (max-width: 640px) {
   #pl-more { display: none; }
   .pl-now { padding-right: 10px; }
   .pl-text { align-items: flex-start; text-align: left; padding: 0 46px 0 0; }
 }
-@container player (max-width: 620px) {
+@container player (max-width: 400px) {
   .pl-right { display: none; }
   .pl-text { align-items: center; text-align: center; padding: 0 44px; }
 }
-@container player (max-width: 440px) {
+@container player (max-width: 340px) {
   #pl-shuffle, #pl-repeat { display: none; }
 }
 body.has-player .content { padding-bottom: 170px; }
 body.has-player .savebar { bottom: 96px; }
 body.panel-open .content { padding-right: 380px; }
+
+/* Invisible, but with a box: Safari anchors the AirPlay list to it. */
+#audio { display: block; position: fixed; left: 50%; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
 /* ---------- side panel: queue & lyrics ---------- */
 .side-panel {
