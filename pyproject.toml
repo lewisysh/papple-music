@@ -1,6 +1,6 @@
 [project]
 name = "papple-music"
-version = "1.0.2"
+version = "1.0.3"
 description = "Papple Music - a friendly web GUI for gamdl with wrapper-v2 (ALAC) support"
 readme = "README.md"
 requires-python = ">=3.10"
