@@ -18,10 +18,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/lewisysh/papple-music/releases/download/v1.0.3/Papple-Music-1.0.3-arm64.dmg"><img alt="Download for macOS" src="https://img.shields.io/badge/Download%20for%20macOS-v1.0.3%20%C2%B7%20Apple%20Silicon-fa2d48?style=for-the-badge"></a>
+  <a href="https://github.com/lewisysh/papple-music/releases/download/v1.1.0/Papple-Music-1.1.0-arm64.dmg"><img alt="Download for macOS" src="https://img.shields.io/badge/Download%20for%20macOS-v1.1.0%20%C2%B7%20Apple%20Silicon-fa2d48?style=for-the-badge"></a>
 </p>
 
-<h3 align="center"><a href="https://github.com/lewisysh/papple-music/releases/download/v1.0.3/Papple-Music-1.0.3-arm64.dmg">Papple-Music-1.0.3-arm64.dmg</a></h3>
+<h3 align="center"><a href="https://github.com/lewisysh/papple-music/releases/download/v1.1.0/Papple-Music-1.1.0-arm64.dmg">Papple-Music-1.1.0-arm64.dmg</a></h3>
 
 <p align="center">
   <b>Apple Silicon · macOS 12 or later</b> · <a href="#mac-app-easiest">install guide</a> · <a href="https://github.com/lewisysh/papple-music/releases">all releases</a>
@@ -42,7 +42,7 @@ Papple Music is a self-hosted web app that puts a polished, Apple Music–like i
 
 No terminal needed — Python, all libraries and ffmpeg are inside the app.
 
-1. Download **[Papple-Music-1.0.3-arm64.dmg](https://github.com/lewisysh/papple-music/releases/download/v1.0.3/Papple-Music-1.0.3-arm64.dmg)** (Apple Silicon Macs, macOS 12 or later). Older and newer versions are on the [**Releases**](https://github.com/lewisysh/papple-music/releases) page.
+1. Download **[Papple-Music-1.1.0-arm64.dmg](https://github.com/lewisysh/papple-music/releases/download/v1.1.0/Papple-Music-1.1.0-arm64.dmg)** (Apple Silicon Macs, macOS 12 or later). Older and newer versions are on the [**Releases**](https://github.com/lewisysh/papple-music/releases) page.
 2. Open it and drag **Papple Music** into **Applications**.
 3. Open **Papple Music**. It opens in its own window and sits in the Dock like any other app.
 
@@ -96,6 +96,7 @@ The app is built for the CPU of the Mac you build on (Apple Silicon or Intel).
 ### 🔎 Find
 - **Search with suggestions** — type `justi` and get *justin bieber*, *justice* and top results right under the box. Arrow keys + Enter work too.
 - **Paste a link** — an Apple Music link opens its album, playlist or artist page. Song links open the album and highlight the song.
+- **Import a list** — paste "artist - title" lines (or a .txt/.csv) and Papple finds each song, lets you check the doubtful ones and downloads the rest into `Imports/<list name>/` with an M3U8 for rekordbox/Serato. Lines in Korean, Japanese or Chinese are matched against that store's local titles; importing again under the same name only fetches new songs.
 - **Browse** — genre, chart and mood categories, recent searches, album / artist / playlist / curator pages, other versions and more by the same artist.
 - **Looks great** — backgrounds tinted by the artwork, motion album covers, dark and light mode, Lossless · Hi-Res · Dolby Atmos badges.
 - **English and Korean UI** — switch any time in Settings.
