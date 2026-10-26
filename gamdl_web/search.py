@@ -397,6 +397,29 @@ class SearchService:
         playlists = ((curator.get("relationships") or {}).get("playlists") or {}).get("data", [])
         return {"item": item, "playlists": [_item(p) for p in playlists if p.get("attributes")]}
 
+    async def preview(self, url: str) -> dict[str, Any] | None:
+        """Title, artist and artwork for an Apple Music link, for a queued download."""
+        from gamdl.interface import AppleMusicInterface
+
+        info = AppleMusicInterface.get_url_info(url)
+        if not info or not info.id or info.library_id:
+            return None
+        kind, item_id = ("songs", info.sub_id) if info.sub_id else (
+            {"album": "albums", "playlist": "playlists", "song": "songs", "music-video": "music-videos", "artist": "artists"}.get(info.type), info.id)
+        if not kind:
+            return None
+        raw = await self._get(f"/v1/catalog/{{storefront}}/{kind}/{item_id}", {"l": self.store.get().language}, missing_ok=True)
+        data = (raw.get("data") or [{}])[0]
+        a = data.get("attributes") or {}
+        if not a.get("name"):
+            return None
+        return {
+            "title": a["name"],
+            "artist": a.get("artistName") or a.get("curatorName"),
+            "artwork": _artwork(a, 300) if (a.get("artwork") or {}).get("url") else None,
+            "type": kind,
+        }
+
     async def refresh_account(self) -> None:
         """Retry signing in now if the session was built without an account."""
         if self._anonymous or self._api is None:

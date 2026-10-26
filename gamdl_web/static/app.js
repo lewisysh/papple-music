@@ -553,8 +553,10 @@ $("#btn-search").addEventListener("click", submitSearch);
 const wrapperReady = () => state.wrapper?.me?.auth?.state === "authenticated";
 
 // The wrapper decrypts ALAC/Atmos and is harmless for AAC, so use it whenever it is logged in.
-async function queueUrls(urls, overrides = {}) {
-  await api("/api/jobs", { method: "POST", body: { urls, overrides: { use_wrapper: wrapperReady(), ...overrides } } });
+// `item` (from a page) lets the queue show the title and cover before the job starts.
+async function queueUrls(urls, overrides = {}, item = null) {
+  const preview = item?.name ? { title: item.name, artist: item.artist || null, artwork: item.artwork || null, type: item.type || null } : null;
+  await api("/api/jobs", { method: "POST", body: { urls, preview, overrides: { use_wrapper: wrapperReady(), ...overrides } } });
   urls.forEach((u) => state.queued.add(u));
 }
 
@@ -808,7 +810,7 @@ sheet.ok.addEventListener("click", async () => {
   if (!it || !choice) return;
   sheet.ok.disabled = true;
   try {
-    await queueUrls([it.url], choice.overrides);
+    await queueUrls([it.url], choice.overrides, it);
     if (choice.family !== "video") store.set("lastFamily", choice.family);
     $$(`[data-download="${CSS.escape(it.url)}"]`).forEach((b) => {
       b.classList.add("queued");
@@ -2608,13 +2610,16 @@ function jobHeader(job) {
   } else if (tracks.length === 1) {
     title = tracks[0].title;
     sub.push(tracks[0].artist, TYPE_LABEL[tracks[0].kind]);
+  } else if (job.preview?.title) {
+    title = job.preview.title;
+    sub.push(job.preview.artist, TYPE_LABEL[job.preview.type]);
   } else {
     title = job.urls[0].replace(/^https?:\/\/(music\.)?apple\.com\//, "");
   }
   if (job.urls.length > 1) sub.push(`링크 ${job.urls.length}개`);
   else if (job.collections.length > 1) sub.push(`외 ${job.collections.length - 1}개`);
   if (job.started_at) sub.push(fmtDuration((job.finished_at || Date.now() / 1000) - job.started_at));
-  return { title, artwork: col?.artwork || tracks[0]?.artwork, sub: sub.filter(Boolean).join(" · ") };
+  return { title, artwork: col?.artwork || tracks[0]?.artwork || job.preview?.artwork, sub: sub.filter(Boolean).join(" · ") };
 }
 
 const LOSSLESS_CODECS = new Set(["alac", "flac", "pcm_s16le", "pcm_s24le"]);
@@ -2856,6 +2861,8 @@ function renderJob(job) {
   $(".job-error", el).textContent = job.error || "";
 
   $('[data-toggle="tracks"] .lbl', el).textContent = `트랙 ${job.tracks.length}`;
+  // Nothing to list before the first song is found.
+  $('[data-toggle="tracks"]', el).classList.toggle("hidden", !job.tracks.length);
   const tracksOpen = state.open.tracks.has(job.id);
   $('[data-toggle="tracks"]', el).setAttribute("aria-expanded", tracksOpen);
   $(".panel-tracks", el).classList.toggle("hidden", !tracksOpen);

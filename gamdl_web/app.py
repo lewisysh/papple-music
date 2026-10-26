@@ -16,6 +16,7 @@ from typing import Any
 from urllib.parse import unquote, quote, urlsplit
 
 import httpx
+import structlog
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -34,7 +35,7 @@ from gamdl.interface import (
     SyncedLyricsFormat,
     UploadedVideoQuality,
 )
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from . import __version__, docker_ctl, wrapper
 from .config import DATA_DIR, JOB_OVERRIDE_FIELDS, LOG_LEVELS, MP3_BITRATES, OUTPUT_FORMATS, Settings, SettingsStore
@@ -51,6 +52,7 @@ from .prompts import ARTIST_MEDIA_TYPE_LABELS, PromptBroker
 from .runner import SetupError, create_apple_music_api
 from .search import ARTIST_VIEWS, SEARCH_TYPES, SearchError, SearchService
 
+logger = structlog.get_logger("gamdl_web.app")
 STATIC_DIR = Path(__file__).parent / "static"
 PASSWORD = os.environ.get("GAMDL_WEB_PASSWORD")
 
@@ -626,9 +628,18 @@ async def artist_view(request: Request, item_id: str, view: str, offset: int = 0
 # ---- jobs & prompts --------------------------------------------------------
 
 
+class JobPreview(BaseModel):
+    title: str | None = Field(None, max_length=300)
+    artist: str | None = Field(None, max_length=300)
+    artwork: str | None = Field(None, max_length=1000)
+    type: str | None = Field(None, max_length=40)
+
+
 class JobRequest(BaseModel):
     urls: list[str]
     overrides: dict[str, Any] = {}
+    # What the page already knows about the item, shown while the job waits.
+    preview: JobPreview | None = None
 
 
 @app.get("/api/jobs")
@@ -650,7 +661,19 @@ async def create_job(request: Request, body: JobRequest):
         state.store.get().merged(overrides)
     except ValidationError as e:
         raise HTTPException(400, _error_detail(e))
-    return state.manager.submit(urls, overrides).public()
+    preview = body.preview.model_dump() if body.preview and body.preview.title else None
+    if preview and not (preview["artwork"] or "").startswith("https://"):
+        preview["artwork"] = None
+    job = state.manager.submit(urls, overrides, preview)
+    if preview is None and len(urls) == 1:
+        # A pasted link: look the item up so the waiting card isn't just a URL.
+        async def fill() -> None:
+            try:
+                state.manager.set_preview(job, await state.search.preview(urls[0]))
+            except Exception as e:
+                logger.debug("job_preview_failed", error=str(e))
+        asyncio.create_task(fill())
+    return job.public()
 
 
 def _job_action(request: Request, job_id: str, fn: str):

@@ -114,6 +114,8 @@ class Job:
     tracks: dict[str, Track] = field(default_factory=dict)
     logs: deque = field(default_factory=lambda: deque(maxlen=1000))
     error: str | None = None
+    # Title/artist/artwork to show before the job starts and gamdl reports them.
+    preview: dict[str, Any] | None = None
 
     def counts(self) -> dict[str, int]:
         counts = {"total": len(self.tracks)}
@@ -132,6 +134,7 @@ class Job:
             "finished_at": self.finished_at,
             "url_index": self.url_index,
             "collections": self.collections,
+            "preview": self.preview,
             "tracks": [t.public() for t in self.tracks.values()],
             "counts": self.counts(),
             "error": self.error,
@@ -174,12 +177,17 @@ class JobManager:
 
     # ---- public API ------------------------------------------------------
 
-    def submit(self, urls: list[str], overrides: dict[str, Any]) -> Job:
-        job = Job(urls=urls, overrides=overrides)
+    def submit(self, urls: list[str], overrides: dict[str, Any], preview: dict[str, Any] | None = None) -> Job:
+        job = Job(urls=urls, overrides=overrides, preview=preview)
         self.jobs[job.id] = job
         self.queue.put_nowait(job.id)
         self._publish(job)
         return job
+
+    def set_preview(self, job: Job, preview: dict[str, Any]) -> None:
+        if job.preview is None and preview:
+            job.preview = preview
+            self._publish(job)
 
     def cancel(self, job_id: str) -> None:
         job = self.jobs[job_id]
