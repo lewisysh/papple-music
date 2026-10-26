@@ -3207,7 +3207,7 @@ function renderSetup() {
         <span class="setup-num">${d.state === "done" ? icon("checkmark") : 3}</span>
         <div class="setup-text"><b>설치</b><small>${esc(label || "")}</small>
           <div class="setup-bar"><span style="width:${Math.round(d.progress * 100)}%"></span></div>
-          <details class="setup-log"${d.state === "error" ? " open" : ""}><summary>로그</summary><pre>${esc(d.log.slice(-80).join("\n"))}</pre></details>
+          <details class="setup-log"${setup.logOpen ?? d.state === "error" ? " open" : ""}><summary>로그</summary><pre>${esc(d.log.slice(-80).join("\n"))}</pre></details>
         </div>
         <div class="setup-actions">${running ? '<button class="btn btn-gray" data-setup="cancel">취소</button>'
           : d.state !== "done" ? '<button class="btn btn-primary" data-setup="start">다시 시도</button>' : ""}</div>
@@ -3217,10 +3217,19 @@ function renderSetup() {
       "소스를 받고 이미지를 빌드해 wrapper를 실행합니다. 처음엔 10~15분 걸려요.",
       `<button class="btn btn-primary" data-setup="start"${dockerOk && apkOk ? "" : " disabled"}>설치 시작</button>`);
   }
+  // The panel is redrawn every second while installing: keep the log open and
+  // follow new lines, unless the reader scrolled up to look at older ones.
+  const old = $("#setup-body .setup-log pre");
+  const follow = !old || old.scrollHeight - old.scrollTop - old.clientHeight < 24;
+  const top = old?.scrollTop || 0;
   $("#setup-body").innerHTML = docker + apk + install;
   const pre = $("#setup-body .setup-log pre");
-  if (pre) pre.scrollTop = pre.scrollHeight;
+  if (pre) pre.scrollTop = follow ? pre.scrollHeight : top;
 }
+// <details> toggle events don't bubble, so listen in the capture phase.
+$("#setup-body").addEventListener("toggle", (e) => {
+  if (e.target.matches?.(".setup-log")) setup.logOpen = e.target.open;
+}, true);
 
 async function refreshSetup() {
   clearTimeout(setup.timer);
