@@ -1117,6 +1117,20 @@ async function onItemClick(e) {
 $("#search-results").addEventListener("click", onItemClick);
 $("#detail").addEventListener("click", onItemClick);
 
+// Double-clicking a song row plays it, like the Music app; its buttons keep
+// their own job, and the row doesn't select a word on the way.
+function songRow(e) {
+  if (e.target.closest("button, a, input")) return null;
+  return e.target.closest(".song, .track")?.querySelector("[data-play]") || null;
+}
+for (const host of [$("#search-results"), $("#detail")]) {
+  host.addEventListener("mousedown", (e) => { if (e.detail > 1 && songRow(e)) e.preventDefault(); });
+  host.addEventListener("dblclick", (e) => {
+    const play = songRow(e);
+    if (play) playFromList(play);
+  });
+}
+
 // ---------------------------------------------------------------- album / artist / playlist pages
 
 const DETAIL_VIEW_KIND = {
