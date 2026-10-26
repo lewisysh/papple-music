@@ -411,17 +411,22 @@ composer.urls.addEventListener("input", () => { autosize(); querySuggest(); });
 composer.urls.addEventListener("focus", querySuggest);
 // A tap on a suggestion blurs the box first on iOS; keep the list until the tap lands.
 composer.urls.addEventListener("blur", () => { if (!suggestPress) hideSuggest(); });
-// Korean IMEs: Enter on a syllable still being composed only commits it in
-// Chrome, so a search needed a second Enter. Submit once the syllable lands.
-// Japanese and Chinese use Enter to confirm a conversion, so those stay as is.
-let enterWhileComposing = false;
-composer.urls.addEventListener("compositionend", (e) => {
-  if (!enterWhileComposing) return;
-  enterWhileComposing = false;
-  if (/[\uac00-\ud7a3\u3131-\u318e]$/.test(e.data || "")) setTimeout(submitSearch);
-});
+// Enter pressed while an IME is composing: Chrome sends it before the syllable
+// is committed, WebKit (Safari, the Mac app) after, and both mark it as part of
+// the composition. Check right after the event instead of guessing the order,
+// and only for Hangul: Japanese and Chinese use Enter to confirm a conversion.
+let composing = false;
+composer.urls.addEventListener("compositionstart", () => { composing = true; });
+composer.urls.addEventListener("compositionend", () => { composing = false; });
+const endsInHangul = (s) => /[\uac00-\ud7a3\u3131-\u318e]\s*$/.test(s);
 composer.urls.addEventListener("keydown", (e) => {
-  if (e.isComposing) { enterWhileComposing = e.key === "Enter" && !e.shiftKey; return; }
+  if (e.isComposing || e.keyCode === 229) {
+    // WebKit may report the key as "Process"; the physical key is still Enter.
+    if ((e.key === "Enter" || e.code === "Enter" || e.code === "NumpadEnter") && !e.shiftKey) {
+      setTimeout(() => { if (!composing && endsInHangul(composer.urls.value)) submitSearch(); });
+    }
+    return;
+  }
   const open = !suggest.box.classList.contains("hidden");
   if (open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
     e.preventDefault();
