@@ -173,7 +173,7 @@ const okDot = (ok, warn = false) => dot(ok ? "ok" : warn ? "warn" : "err");
 
 // ---------------------------------------------------------------- navigation
 
-const TAB_PATHS = { search: "/search", download: "/downloads", wrapper: "/wrapper", settings: "/settings" };
+const TAB_PATHS = { search: "/search", download: "/downloads", wrapper: "/wrapper", settings: "/settings", about: "/about" };
 const DETAIL_KINDS = { album: "albums", artist: "artists", playlist: "playlists", curator: "curators" };
 const DETAIL_PATHS = { albums: "album", artists: "artist", playlists: "playlist", curators: "curator" };
 
@@ -192,6 +192,17 @@ function showPage(name) {
   updateSavebar();
   if (name === "wrapper") { refreshWrapper(); refreshDocker(); refreshSetup(); }
   if (name === "settings") refreshCookies();
+  if (name === "about") renderAbout();
+}
+
+function renderAbout() {
+  const m = state.meta;
+  if (!m) return;
+  $("#about-name").textContent = brand.name;
+  $("#about-tagline").textContent = brand.tagline;
+  $("#about-version").textContent = `v${m.version}`;
+  $("#about-version-row").textContent = m.version;
+  $("#about-engine").textContent = `gamdl ${m.gamdl_version}`;
 }
 
 // Cross-fade between pages where the browser supports view transitions.
@@ -243,7 +254,7 @@ function route() {
     return;
   }
   if (head === "downloads") { showPage("download"); return; }
-  if (head === "wrapper" || head === "settings") { showPage(head); return; }
+  if (head === "wrapper" || head === "settings" || head === "about") { showPage(head); return; }
   if (head === "library" && rest[0] === "playlist" && rest[1]) {
     showPage("detail");
     loadDetail("library-playlists", rest[1]);
@@ -3591,6 +3602,7 @@ async function boot() {
   hydrateIcons();
   [state.meta, state.settings] = await Promise.all([api("/api/meta"), api("/api/settings")]);
   applyBrand(state.meta.brand);
+  renderAbout();
   renderSettings();
   connectEvents();
   refreshWrapper();

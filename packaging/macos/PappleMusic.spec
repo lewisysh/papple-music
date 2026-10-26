@@ -10,6 +10,7 @@ VERSION = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["versi
 
 datas = [
     (str(ROOT / "gamdl_web/static"), "gamdl_web/static"),
+    (str(ROOT / "pyproject.toml"), "."),  # read for the version shown in About
 ]
 binaries = []
 hiddenimports = ["gamdl_web.app", "uvicorn.lifespan.on", "uvicorn.protocols.http.h11_impl", "uvicorn.loops.asyncio"]

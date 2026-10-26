@@ -40,6 +40,10 @@
           <span class="sb-icon" data-icon="sliders"></span>
           <span class="sb-label">설정</span>
         </button>
+        <button role="tab" data-tab="about">
+          <span class="sb-icon" data-icon="infoline"></span>
+          <span class="sb-label">About</span>
+        </button>
       </nav>
 
       <div class="sb-library hidden" id="sb-library">
@@ -218,6 +222,65 @@
           <a href="https://addons.mozilla.org/addon/export-cookies-txt" target="_blank" rel="noopener">Export Cookies</a>로 내보내세요.</p>
 
         <form id="settings-form" autocomplete="off"></form>
+      </section>
+      <section id="tab-about" class="page narrow">
+        <div class="about-hero">
+          <img class="about-icon" src="/brand/icon-128.png" alt="" width="84" height="84">
+          <div class="about-hero-text">
+            <h1 id="about-name">Papple Music</h1>
+            <p class="about-tagline" id="about-tagline">Enhanced Downloader</p>
+            <p class="about-badges"><span class="about-pill" id="about-version"></span><span class="secondary" id="about-engine"></span></p>
+          </div>
+        </div>
+
+        <div class="group-head"><span>정보</span></div>
+        <div class="group about-info">
+          <div class="row"><span>버전</span><span class="row-value secondary" id="about-version-row"></span></div>
+          <div class="row"><span>만든 사람</span><a class="row-value" href="https://github.com/lewisysh" target="_blank" rel="noopener">lewisysh</a></div>
+          <div class="row"><span>소스 코드</span><a class="row-value" href="https://github.com/lewisysh/papple-music" target="_blank" rel="noopener">GitHub</a></div>
+          <div class="row"><span>새 버전 받기</span><a class="row-value" href="https://github.com/lewisysh/papple-music/releases" target="_blank" rel="noopener">Releases</a></div>
+          <div class="row"><span>라이선스</span><span class="row-value secondary">MIT</span></div>
+        </div>
+
+        <div class="group-head"><span>간단한 사용법</span></div>
+        <ol class="group about-steps">
+          <li><b>로그인</b><span>Wrapper 탭에서 Apple ID로 로그인하거나, 설정에서 Apple Music 쿠키를 넣으세요. 무손실(ALAC)은 wrapper가 필요해요.</span></li>
+          <li><b>찾기</b><span>검색창에 아티스트·곡·앨범 이름을 치거나 Apple Music 링크를 붙여넣으세요.</span></li>
+          <li><b>듣기</b><span>재생 버튼을 누르거나 곡을 더블클릭하면 바로 들을 수 있어요. 플레이어의 음질 배지를 누르면 AAC와 무손실 중에 고를 수 있어요.</span></li>
+          <li><b>받기</b><span>다운로드 버튼을 누르고 음질을 고르면 다운로드 탭에 추가되고, 진행률과 지금 하는 작업이 실시간으로 보여요.</span></li>
+          <li><b>정리</b><span>앨범은 Albums, 플레이리스트는 Playlists, 한 곡은 Songs 폴더에 저장돼요. 저장 위치와 파일 이름은 설정에서 바꿀 수 있어요.</span></li>
+        </ol>
+        <p class="hint">스페이스바로 재생·일시정지하고, 곡을 오른쪽 클릭하면 다음에 재생·앨범으로 이동 같은 메뉴가 열려요.</p>
+
+        <div class="group-head"><span>변경 내역</span></div>
+        <div class="group about-log">
+          <div class="about-release">
+            <div class="about-release-head"><b>1.0.0</b><span class="secondary">2026-10-26</span></div>
+            <ul>
+              <li>휴대폰 전체 화면 플레이어를 Music 앱처럼 다듬었어요: 움직이는 배경, 볼륨 바, 음질 선택</li>
+              <li>재생이 훨씬 빨리 시작돼요</li>
+              <li>잠금 화면에 앨범아트와 이전·다음 곡 버튼이 나와요</li>
+              <li>한 곡만 받으면 Songs 폴더에 따로 저장돼요</li>
+              <li>다운로드 진행률과 단계, 음질 배지(무손실·Dolby, 비트·샘플레이트)를 보여줘요</li>
+              <li>Wrapper 설치 마법사, 부드러운 가사 스크롤, 더블클릭 재생, About 페이지</li>
+            </ul>
+          </div>
+          <div class="about-release">
+            <div class="about-release-head"><b>0.1.0</b><span class="secondary">2026-10-26</span></div>
+            <ul>
+              <li>첫 공개 버전: Music 앱 스타일 검색과 둘러보기, 음질을 골라 받는 다운로드, 바로 듣기와 실시간 가사, Mac 앱, 시놀로지 Docker, 한국어·영어</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="group-head"><span>함께 쓴 도구</span></div>
+        <div class="group about-info">
+          <a class="row" href="https://github.com/glomatico/gamdl" target="_blank" rel="noopener"><span>gamdl</span><span class="row-value secondary">다운로드 엔진</span></a>
+          <a class="row" href="https://github.com/glomatico/wrapper-v2" target="_blank" rel="noopener"><span>wrapper-v2</span><span class="row-value secondary">ALAC 복호화</span></a>
+          <a class="row" href="https://github.com/video-dev/hls.js" target="_blank" rel="noopener"><span>hls.js</span><span class="row-value secondary">뮤직비디오 재생</span></a>
+          <a class="row" href="https://fastapi.tiangolo.com" target="_blank" rel="noopener"><span>FastAPI · mutagen · ffmpeg</span><span class="row-value secondary">서버 · 태그 · 변환</span></a>
+        </div>
+        <p class="hint about-legal">이 앱은 Apple과 관련이 없어요. Apple Music과 AirPlay는 Apple Inc.의 상표이고, Dolby Atmos는 Dolby Laboratories의 상표예요. 구독 중인 본인 계정으로 개인 소장용으로만 사용하세요.</p>
       </section>
     </main>
   </div>

@@ -36,7 +36,7 @@ from gamdl.interface import (
 )
 from pydantic import BaseModel, ValidationError
 
-from . import docker_ctl, wrapper
+from . import __version__, docker_ctl, wrapper
 from .config import DATA_DIR, JOB_OVERRIDE_FIELDS, LOG_LEVELS, MP3_BITRATES, OUTPUT_FORMATS, Settings, SettingsStore
 from . import convert
 from .convert import EXTRA_TAGS
@@ -207,6 +207,7 @@ async def brand_file(name: str):
 async def meta():
     values = lambda enum: [e.value for e in enum]
     return {
+        "version": __version__,
         "gamdl_version": gamdl_version,
         "platform": sys.platform,
         "brand": _brand_info(),
