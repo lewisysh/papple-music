@@ -81,6 +81,43 @@ class WebBaseInterface(AppleMusicBaseInterface):
         return cover
 
 
+async def fetch_in_ranges(url: str, path: str, parts: int = 4) -> None:
+    """Download a plain file in a few parallel byte ranges (CDNs cap each connection)."""
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    timeout = httpx.Timeout(20, read=60)
+    async with httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client:
+        async with client.stream("GET", url, headers={"Range": "bytes=0-0"}) as probe:
+            probe.raise_for_status()
+            match = re.search(r"/(\d+)$", probe.headers.get("content-range", ""))
+        if probe.status_code != 206 or not match:
+            async with client.stream("GET", url) as r:
+                r.raise_for_status()
+                with target.open("wb") as f:
+                    async for chunk in r.aiter_bytes(1 << 16):
+                        f.write(chunk)
+            return
+        size = int(match.group(1))
+        step = -(-size // parts)
+        with target.open("wb") as f:
+            f.truncate(size)
+
+        async def fetch(start: int) -> None:
+            end = min(size, start + step) - 1
+            async with client.stream("GET", url, headers={"Range": f"bytes={start}-{end}"}) as r:
+                r.raise_for_status()
+                if r.status_code != 206:
+                    raise ValueError("range request ignored")
+                with target.open("r+b") as f:
+                    f.seek(start)
+                    async for chunk in r.aiter_bytes(1 << 16):
+                        f.write(chunk)
+                    if f.tell() != end + 1:
+                        raise ValueError("short range")
+
+        await asyncio.gather(*(fetch(start) for start in range(0, size, step)))
+
+
 class WebBaseDownloader(AppleMusicBaseDownloader):
     """Adds a separate path for playlist tracks and honours "cover" in exclude_tags."""
 
@@ -105,6 +142,8 @@ class WebBaseDownloader(AppleMusicBaseDownloader):
         self.single_song_template = single_song_template
         # Set by the job while it downloads a link to one song.
         self.single_song_mode = False
+        # Playback cache files need no tags; StreamService turns this on.
+        self.skip_tags = False
 
     def get_final_path(self, tags, file_extension, playlist_tags):
         if self.playlist_track_template and playlist_tags and playlist_tags.title:
@@ -127,6 +166,15 @@ class WebBaseDownloader(AppleMusicBaseDownloader):
                 setattr(self, attr, value)
 
     async def download_stream(self, stream_url: str, download_path: str):
+        if self.skip_tags and not stream_url.split("?")[0].endswith(".m3u8"):
+            # Playback cache: fetch in-process in parallel ranges instead of
+            # starting a yt-dlp process; fall back to it if the CDN won't play along.
+            try:
+                await fetch_in_ranges(stream_url, download_path)
+                return
+            except (httpx.HTTPError, OSError, ValueError) as e:
+                logger.debug("range_fetch_failed", error=str(e))
+                Path(download_path).unlink(missing_ok=True)
         total = await progress.stream_size(stream_url)
         watcher = asyncio.create_task(progress.watch(download_path, total))
         try:
@@ -136,6 +184,8 @@ class WebBaseDownloader(AppleMusicBaseDownloader):
         progress.report("download", total, total)
 
     async def apply_tags(self, media_path, tags, cover_bytes):
+        if self.skip_tags:
+            return
         progress.report("tags")
         if "cover" in (self.exclude_tags or []):
             cover_bytes = None

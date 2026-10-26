@@ -71,6 +71,7 @@ async def lifespan(app: FastAPI):
     app.state.motion = MotionService(store, app.state.search)
     manager.motion = app.state.motion
     app.state.stream = StreamService(store)
+    app.state.stream.warm("aac")
     app.state.wrapper_setup = WrapperSetup(store)
     warm = asyncio.create_task(app.state.search.warm())
     yield

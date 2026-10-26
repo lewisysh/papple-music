@@ -19,7 +19,12 @@ logger = structlog.get_logger("gamdl_web.stream")
 CACHE_DIR = DATA_DIR / "stream"
 CACHE_LIMIT = 200
 VIDEO_CACHE_LIMIT = 20
-SESSION_TTL = 20 * 60
+# Sessions are refreshed in the background once this old, so a play never
+# waits for one to be built (several Apple round trips).
+SESSION_TTL = 45 * 60
+# Downloads that may run at once per quality: a song the user picks doesn't
+# wait behind the next-track prefetch.
+PARALLEL_DOWNLOADS = 3
 
 # Browsers cannot play Apple's encrypted streams, so playback downloads the song
 # with gamdl as AAC (which every browser decodes) into a small cache first.
@@ -33,7 +38,8 @@ STREAM_SETTINGS = {
     "use_playlist_track_path": False,
     "overwrite": False,
     "cover_size": 600,
-    "cover_format": "jpg",
+    # No cover is fetched or embedded: the player shows artwork from the API.
+    "cover_format": "raw",
     "output_format": "original",
     "album_folder_template": "",
     "compilation_folder_template": "",
@@ -47,6 +53,8 @@ STREAM_SETTINGS = {
 # Lossless streams are fetched as ALAC through the wrapper and served as FLAC,
 # which Chrome and Firefox decode (they cannot play ALAC).
 QUALITY_SETTINGS = {
+    # With cookies, AAC skips the wrapper: through it gamdl fetches the wrapper's
+    # playback info as well as the web one, one more slow round trip per song.
     "aac": {"song_codec_priority": ["aac-web", "aac"]},
     "lossless": {"song_codec_priority": ["alac", "aac"], "use_wrapper": True},
     # Music videos: H.264 so every browser can decode them, then cut into HLS.
@@ -66,8 +74,9 @@ class StreamService:
     def __init__(self, store: SettingsStore) -> None:
         self.store = store
         self._sessions: dict[str, tuple[Session, float]] = {}
-        # One download at a time per quality, so a music video doesn't hold up songs.
-        self._locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self._building: dict[str, asyncio.Task] = {}
+        # A few downloads at a time per quality; music videos have their own slots.
+        self._slots: defaultdict[str, asyncio.Semaphore] = defaultdict(lambda: asyncio.Semaphore(PARALLEL_DOWNLOADS))
         self._pending: dict[str, asyncio.Task] = {}
 
     def cached(self, song_id: str, quality: str) -> Path | None:
@@ -81,31 +90,58 @@ class StreamService:
                 return path
         return None
 
-    async def _get_session(self, quality: str) -> Session:
-        session, created = self._sessions.get(quality, (None, 0.0))
-        if session and time.time() - created < SESSION_TTL:
-            return session
-        if session:
-            await session.close()
-        folder = CACHE_DIR / quality
-        settings = self.store.get().merged({
+    def _settings(self, quality: str):
+        base = self.store.get()
+        extra = dict(QUALITY_SETTINGS[quality])
+        if quality == "aac" and Path(base.cookies_path).expanduser().is_file():
+            extra["use_wrapper"] = False
+        return base.merged({
             **STREAM_SETTINGS,
-            **QUALITY_SETTINGS[quality],
-            "output_path": str(folder),
+            **extra,
+            "output_path": str(CACHE_DIR / quality),
             "temp_path": str(CACHE_DIR / "tmp"),
         })
-        session = await create_session(settings, WebPrompts(None, "stream"))
+
+    async def _build_session(self, quality: str) -> Session:
+        session = await create_session(self._settings(quality), WebPrompts(None, "stream"))
+        session.downloader.base.skip_tags = True
+        old, _ = self._sessions.get(quality, (None, 0.0))
         self._sessions[quality] = (session, time.time())
+        if old:
+            # Downloads still using it hold their own references to its clients.
+            asyncio.get_running_loop().call_later(120, lambda: asyncio.ensure_future(old.close()))
         return session
+
+    def _rebuild(self, quality: str) -> asyncio.Task:
+        task = self._building.get(quality)
+        if task is None or task.done():
+            task = asyncio.create_task(self._build_session(quality))
+            self._building[quality] = task
+            task.add_done_callback(lambda t: t.cancelled() or t.exception())
+        return task
+
+    async def _get_session(self, quality: str) -> Session:
+        session, created = self._sessions.get(quality, (None, 0.0))
+        if session:
+            if time.time() - created > SESSION_TTL:
+                self._rebuild(quality)  # refresh in the background, keep using this one
+            return session
+        return await asyncio.shield(self._rebuild(quality))
+
+    def warm(self, quality: str = "aac") -> None:
+        """Build the session ahead of the first play."""
+        if quality not in self._sessions:
+            self._rebuild(quality)
 
     async def _drop_session(self, quality: str) -> None:
         session, _ = self._sessions.pop(quality, (None, 0.0))
+        self._building.pop(quality, None)
         if session:
             await session.close()
 
     async def _download(self, song_id: str, quality: str) -> Path:
         video = quality == "video"
-        async with self._locks[quality]:
+        async with self._slots[quality]:
             if path := self.cached(song_id, quality):
                 return path
             target = CACHE_DIR / quality / f"{song_id}.{'mp4' if video else 'm4a'}"

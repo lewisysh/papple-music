@@ -1559,19 +1559,11 @@ async function playCurrent({ keepTime = 0 } = {}) {
   }
   if (player.queue[player.index] !== t) return;
   renderQualityButton();
-  let src;
-  try {
-    src = await loadBlob(streamUrl(t), prep.signal);
-  } catch (err) {
-    if (prep.signal.aborted) return;
-    player.root.classList.remove("loading");
-    toast(`재생하지 못했습니다: ${err.message}`, "err");
-    return;
-  }
-  if (player.queue[player.index] !== t) { URL.revokeObjectURL(src); return; }
-  if (player.blob) URL.revokeObjectURL(player.blob);
-  player.blob = src;
-  player.audio.src = src;
+  // The file is complete on the server by now: let the element stream it with
+  // range requests, so playback starts after the first chunk rather than after
+  // the whole file (a hi-res FLAC can be 100 MB) has crossed the network.
+  if (player.blob) { URL.revokeObjectURL(player.blob); player.blob = null; }
+  player.audio.src = streamUrl(t);
   if (keepTime) player.audio.addEventListener("loadedmetadata", () => { player.audio.currentTime = keepTime; }, { once: true });
   try {
     await player.audio.play();
