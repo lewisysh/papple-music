@@ -25,6 +25,9 @@ SESSION_TTL = 20 * 60
 # Without an account the session is retried this often, so signing in (wrapper
 # login, new cookies) is picked up without waiting for SESSION_TTL.
 ANONYMOUS_RETRY = 15
+# After the account's token is rate limited (429), catalog reads go through the
+# public web-player token for this long; it has its own, separate quota.
+THROTTLE_COOLDOWN = 5 * 60
 
 
 class SearchError(Exception):
@@ -165,6 +168,9 @@ class SearchService:
         self._created = 0.0
         self._suggest_cache: dict[str, dict[str, Any]] = {}
         self._anonymous = False
+        self._web: httpx.AsyncClient | None = None
+        self._web_created = 0.0
+        self._throttled_until = 0.0
         self._browse: tuple[float, list] | None = None
         self._lock = asyncio.Lock()
 
@@ -266,13 +272,33 @@ class SearchService:
             },
         }
 
+    async def _web_client(self) -> httpx.AsyncClient:
+        """A client on the public web-player token (no account), for catalog reads."""
+        if self._web is None or time.time() - self._web_created > SESSION_TTL:
+            api = await AppleMusicApi.create(storefront=ANONYMOUS_STOREFRONT, language=self.store.get().language)
+            headers = dict(api.client.headers)
+            await api.client.aclose()
+            if self._web is not None:
+                await self._web.aclose()
+            self._web, self._web_created = httpx.AsyncClient(headers=headers, timeout=15), time.time()
+        return self._web
+
     async def _get(self, uri: str, params: dict | None = None, missing_ok: bool = False) -> dict:
         """GET an AMP API path; "{storefront}" in it is filled from the session."""
+        catalog = uri.startswith("/v1/catalog/")
         for attempt in range(2):
             api = await self._session(fresh=attempt > 0)
             url = APPLE_MUSIC_AMP_API_URL + uri.format(storefront=api.storefront)
+            # The catalog needs no account, so when the account token is being
+            # throttled, read it with the public token instead of failing.
+            use_web = catalog and not self._anonymous and time.time() < self._throttled_until
             try:
-                response = await self._client.get(url, params=params)
+                client = await self._web_client() if use_web else self._client
+                response = await client.get(url, params=params)
+                if response.status_code == 429 and catalog and not use_web and not self._anonymous:
+                    logger.info("Apple Music이 계정 토큰 요청을 제한해 공용 토큰으로 카탈로그를 읽습니다")
+                    self._throttled_until = time.time() + THROTTLE_COOLDOWN
+                    response = await (await self._web_client()).get(url, params=params)
             except httpx.HTTPError as e:
                 raise SearchError(f"Apple Music에 연결하지 못했습니다 ({type(e).__name__})") from e
             # An expired token shows up as 401/403; rebuild the session once.
@@ -547,3 +573,6 @@ class SearchService:
     async def close(self) -> None:
         async with self._lock:
             await self._close_api()
+            if self._web is not None:
+                await self._web.aclose()
+                self._web = None
