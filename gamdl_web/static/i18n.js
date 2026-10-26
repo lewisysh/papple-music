@@ -591,6 +591,7 @@ const I18N_EN = {
 "스페이스바로 재생·일시정지하고, 곡을 오른쪽 클릭하면 다음에 재생·앨범으로 이동 같은 메뉴가 열려요.": "Space plays and pauses. Right-click a song for Play next, Go to album and more.",
 "변경 내역": "What's new",
 "휴대폰 전체 화면 플레이어를 Music 앱처럼 다듬었어요: 움직이는 배경, 볼륨 바, 음질 선택": "Phone full-screen player reworked to feel like the Music app: moving background, volume bar, quality picker",
+"기본 포트를 18765로 바꿨어요. 다른 프로그램이 쓰고 있으면 Mac 앱이 다음 빈 포트를 알아서 찾아요": "The default port is now 18765, and the Mac app moves to the next free port if another program is using it",
 "재생이 훨씬 빨리 시작돼요": "Playback starts much faster",
 "잠금 화면에 앨범아트와 이전·다음 곡 버튼이 나와요": "Artwork and previous/next track buttons on the lock screen",
 "한 곡만 받으면 Songs 폴더에 따로 저장돼요": "Single-song downloads go to their own Songs folder",
