@@ -239,6 +239,7 @@ JOB_OVERRIDE_FIELDS = {
     "single_song_template",
     "dj_tags",
     "dj_reference_dir",
+    "output_format",
 }
 
 

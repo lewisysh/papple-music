@@ -673,6 +673,7 @@ async function downloadImport() {
         overrides: {
           use_wrapper: wrapperReady(), ...familyOverrides(family),
           dj_tags: $("#import-dj").checked,
+          output_format: $("#import-format").value,
           ...($("#import-ref").value.trim() ? { dj_reference_dir: $("#import-ref").value.trim() } : {}),
         },
       },
@@ -695,6 +696,13 @@ async function loadImportNames() {
     $("#import-dj").dataset.init = "1";
     $("#import-dj").checked = store.get("importDj", true);
     $("#import-dj").addEventListener("change", () => store.set("importDj", $("#import-dj").checked));
+  }
+  if (!$("#import-format").options.length) {
+    const formats = { original: "m4a 그대로", aiff: "AIFF", flac: "FLAC", wav: "WAV", mp3: "MP3" };
+    $("#import-format").innerHTML = (state.meta?.options.output_format || Object.keys(formats))
+      .map((f) => `<option value="${f}">${formats[f] || f}</option>`).join("");
+    $("#import-format").value = store.get("importFormat", state.settings?.output_format || "original");
+    $("#import-format").addEventListener("change", () => store.set("importFormat", $("#import-format").value));
   }
   if (!$("#import-family").options.length) {
     $("#import-family").innerHTML = familyOptions().map((o) => `<option value="${o.family}">${esc(o.name)}</option>`).join("");

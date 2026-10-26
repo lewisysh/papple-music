@@ -636,6 +636,10 @@ const I18N_EN = {
 "대기 중인 다운로드에도 제목·아티스트·앨범아트가 보여요": "Waiting downloads show their title, artist and cover",
 "Safari와 Mac 앱에서 한글 검색어 입력 후 Enter가 바로 검색돼요": "Korean input now searches with one Enter in Safari and the Mac app",
 // DJ key/BPM
+"DJ용 키·BPM 태그: 기존 파일, GetSongBPM, Deezer에서 가져와 캠블롯·음악 표기·오픈 키로 넣어요": "Key and BPM tags for DJs, from your own files, GetSongBPM and Deezer, in Camelot, musical or Open Key notation",
+"AIFF 저장 형식, 목록 가져오기에서 형식 선택": "AIFF output, and a format choice in list import",
+"여러 곡 다운로드에 링크 대신 목록 이름이나 곡 제목이 보여요": "Multi-song downloads show a list name or song title instead of a link",
+"m4a 그대로": "Keep m4a",
 "{} 외 {}곡": "{} + {} more",
 "BPM 데이터": "BPM data",
 "키·BPM 데이터": "Key and BPM data",
