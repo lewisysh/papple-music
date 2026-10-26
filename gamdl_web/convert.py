@@ -21,7 +21,7 @@ from mutagen.wave import WAVE
 from PIL import Image
 
 # Only real lossless sources become FLAC/WAV; Dolby streams are left alone.
-LOSSLESS_CODECS = {"alac", "flac", "pcm_s16le", "pcm_s24le"}
+LOSSLESS_CODECS = {"alac", "flac", "pcm_s16le", "pcm_s24le", "pcm_s16be", "pcm_s24be"}
 SURROUND_CODECS = {"eac3", "ac3"}
 EXTENSIONS = {"flac": ".flac", "wav": ".wav", "aiff": ".aiff", "mp3": ".mp3"}
 

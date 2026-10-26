@@ -142,6 +142,7 @@ class Job:
             "url_index": self.url_index,
             "collections": self.collections,
             "preview": self.preview,
+            "import_name": self.import_name,
             "tracks": [t.public() for t in self.tracks.values()],
             "counts": self.counts(),
             "error": self.error,

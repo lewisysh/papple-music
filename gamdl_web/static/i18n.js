@@ -636,6 +636,7 @@ const I18N_EN = {
 "대기 중인 다운로드에도 제목·아티스트·앨범아트가 보여요": "Waiting downloads show their title, artist and cover",
 "Safari와 Mac 앱에서 한글 검색어 입력 후 Enter가 바로 검색돼요": "Korean input now searches with one Enter in Safari and the Mac app",
 // DJ key/BPM
+"{} 외 {}곡": "{} + {} more",
 "BPM 데이터": "BPM data",
 "키·BPM 데이터": "Key and BPM data",
 "DJ · 키와 BPM": "DJ · Key and BPM",

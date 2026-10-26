@@ -2810,25 +2810,32 @@ function jobHeader(job) {
   const tracks = job.tracks;
   let title;
   const sub = [];
-  if (col) {
+  if (job.import_name) {
+    // A pasted list: its name, not its first song.
+    title = job.import_name;
+    sub.push(`${job.urls.length}곡`, TYPE_LABEL.import);
+  } else if (col) {
     title = col.title;
     sub.push(col.artist, TYPE_LABEL[col.type]);
   } else if (tracks.length === 1) {
     title = tracks[0].title;
     sub.push(tracks[0].artist, TYPE_LABEL[tracks[0].kind]);
+  } else if (tracks.length > 1) {
+    title = `${tracks[0].title} 외 ${job.urls.length - 1}곡`;
+    sub.push(tracks[0].artist);
   } else if (job.preview?.title) {
     title = job.preview.title;
     sub.push(job.preview.artist, TYPE_LABEL[job.preview.type]);
   } else {
     title = job.urls[0].replace(/^https?:\/\/(music\.)?apple\.com\//, "");
   }
-  if (job.urls.length > 1) sub.push(`링크 ${job.urls.length}개`);
+  if (job.urls.length > 1 && !job.import_name) sub.push(`링크 ${job.urls.length}개`);
   else if (job.collections.length > 1) sub.push(`외 ${job.collections.length - 1}개`);
   if (job.started_at) sub.push(fmtDuration((job.finished_at || Date.now() / 1000) - job.started_at));
   return { title, artwork: col?.artwork || tracks[0]?.artwork || job.preview?.artwork, sub: sub.filter(Boolean).join(" · ") };
 }
 
-const LOSSLESS_CODECS = new Set(["alac", "flac", "pcm_s16le", "pcm_s24le"]);
+const LOSSLESS_CODECS = new Set(["alac", "flac", "pcm_s16le", "pcm_s24le", "pcm_s16be", "pcm_s24be"]);
 const fmtKhz = (rate) => `${Number((rate / 1000).toFixed(1))}kHz`;
 
 // Lossless and Dolby get their logos, AAC stays text; the real format follows,
