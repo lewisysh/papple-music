@@ -17,12 +17,11 @@ RED = (250, 45, 72)
 
 DISPLAY = "/Library/Fonts/SF-Pro-Display-Bold.otf"
 TEXT = "/System/Library/Fonts/SFNS.ttf"
-KOREAN = "/System/Library/Fonts/AppleSDGothicNeo.ttc"
 
 
-def font(path: str, size: float, index: int = 0) -> ImageFont.FreeTypeFont:
+def font(path: str, size: float) -> ImageFont.FreeTypeFont:
     try:
-        return ImageFont.truetype(path, round(size), index=index)
+        return ImageFont.truetype(path, round(size))
     except OSError:
         return ImageFont.truetype(TEXT, round(size))
 
@@ -82,10 +81,8 @@ def draw(scale: int) -> Image.Image:
 
     # Instructions under the icons and their labels.
     d = ImageDraw.Draw(img)
-    d.text((s(W / 2), s(342)), "Papple Music을 Applications 폴더로 끌어다 놓으세요",
-           font=font(KOREAN, s(13), index=2), fill=(80, 76, 74), anchor="mm")
-    d.text((s(W / 2), s(364)), "Drag Papple Music onto Applications to install",
-           font=font(TEXT, s(12)), fill=(134, 128, 125), anchor="mm")
+    d.text((s(W / 2), s(350)), "Drag Papple Music onto Applications to install",
+           font=font(TEXT, s(13)), fill=(96, 91, 88), anchor="mm")
     # A touch of noise so the soft glows don't band.
     arr = np.asarray(img.convert("RGB")).astype(np.float32)
     arr += np.random.default_rng(7).uniform(-1.5, 1.5, arr.shape)
