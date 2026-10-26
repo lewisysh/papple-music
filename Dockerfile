@@ -1,5 +1,11 @@
 FROM python:3.12-slim
 
+ARG VERSION=dev
+LABEL org.opencontainers.image.title="Papple Music" \
+      org.opencontainers.image.version="$VERSION" \
+      org.opencontainers.image.source="https://github.com/lewisysh/papple-music" \
+      org.opencontainers.image.licenses="MIT"
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*

@@ -14,18 +14,19 @@ cd papple-music
 ./scripts/build-synology.sh ~/Downloads/AppleMusic_3.6.0-beta-1109.apk
 ```
 
+The APK is only needed the first time; later builds reuse the wrapper image (set `REBUILD_WRAPPER=1` to rebuild it).
 When it finishes, `dist/synology/` contains three files:
 
 | File | What it is |
 | --- | --- |
-| `papple-music.tar` | Web UI image |
+| `papple-music-<version>.tar` | Web UI image, tagged `papple-music:<version>` and `papple-music:latest` |
 | `wrapper-v2.tar` | Wrapper image (contains the Apple libraries from your APK — **never upload it anywhere public**) |
-| `docker-compose.yml` | Ready-to-use project file with a freshly generated web password |
+| `docker-compose.yml` | Ready-to-use project file with a web password (kept from the previous build, if any) |
 
 ## 2. Put it on the NAS
 
 1. In **File Station**, create a `papple-music` folder inside the `docker` shared folder and upload the three files.
-2. **Container Manager → Image → Add → Add from file**: import `papple-music.tar` and `wrapper-v2.tar`.
+2. **Container Manager → Image → Add → Add from file**: import `papple-music-<version>.tar` and `wrapper-v2.tar`.
 3. **Container Manager → Project → Create**
    - Project name: `papple-music`
    - Path: the folder from step 1
@@ -63,5 +64,5 @@ Thanks to `GAMDL_WEB_UMASK: "000"`, downloaded files can be renamed or deleted r
 
 - The container start/stop buttons on the **Docker** tab don't work inside a container. Use Container Manager instead.
 - For access from outside your home, don't open the port directly — use Synology's **reverse proxy + HTTPS** or a VPN such as Tailscale.
-- Updating: `git pull` on your computer, repeat step 1, import the new tar files and rebuild the project. Keep the `data/` folder to keep your sign-in and settings.
+- Updating: `git pull` on your computer, run `scripts/build-synology.sh` again, import the new `papple-music-<version>.tar` and rebuild the project. The wrapper image only needs re-importing when you rebuilt it. Keep the `data/` folder to keep your sign-in and settings. The running version is shown on the **About** page.
 - If the wrapper doesn't start, check the `papple-wrapper` container log in Container Manager.
