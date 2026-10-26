@@ -15,21 +15,24 @@ cd papple-music
 ```
 
 The APK is only needed the first time; later builds reuse the wrapper image (set `REBUILD_WRAPPER=1` to rebuild it).
-When it finishes, `dist/synology/` contains three files:
+When it finishes you get **one file**: `dist/synology/papple-music-<version>-synology.zip`. Inside:
 
 | File | What it is |
 | --- | --- |
-| `papple-music-<version>.tar` | Web UI image, tagged `papple-music:<version>` and `papple-music:latest` |
-| `wrapper-v2.tar` | Wrapper image (contains the Apple libraries from your APK — **never upload it anywhere public**) |
+| `papple-music-<version>-images.tar` | Both images in one archive: the web UI (`papple-music:<version>`, `papple-music:latest`) and the wrapper (`wrapper-v2:x86_64`) |
 | `docker-compose.yml` | Ready-to-use project file with a web password (kept from the previous build, if any) |
+| `README.md` | These steps |
+
+> [!WARNING]
+> The zip contains the wrapper image with the Apple libraries from your APK. **Never upload it anywhere public.**
 
 ## 2. Put it on the NAS
 
-1. In **File Station**, create a `papple-music` folder inside the `docker` shared folder and upload the three files.
-2. **Container Manager → Image → Add → Add from file**: import `papple-music-<version>.tar` and `wrapper-v2.tar`.
+1. In **File Station**, open the `docker` shared folder, upload the zip, then right-click it → **Extract → Extract here**. You get a `papple-music-<version>-synology` folder.
+2. **Container Manager → Image → Add → Add from file**: pick `papple-music-<version>-images.tar` from that folder. Both images are imported at once.
 3. **Container Manager → Project → Create**
    - Project name: `papple-music`
-   - Path: the folder from step 1
+   - Path: the extracted folder
    - Source: **Use existing docker-compose.yml**
    - Skip the web portal settings and finish
 4. Open `http://NAS-IP:8765` in a browser. Use any username; the password is the `GAMDL_WEB_PASSWORD` value in `docker-compose.yml`.
@@ -64,5 +67,5 @@ Thanks to `GAMDL_WEB_UMASK: "000"`, downloaded files can be renamed or deleted r
 
 - The container start/stop buttons on the **Docker** tab don't work inside a container. Use Container Manager instead.
 - For access from outside your home, don't open the port directly — use Synology's **reverse proxy + HTTPS** or a VPN such as Tailscale.
-- Updating: `git pull` on your computer, run `scripts/build-synology.sh` again, import the new `papple-music-<version>.tar` and rebuild the project. The wrapper image only needs re-importing when you rebuilt it. Keep the `data/` folder to keep your sign-in and settings. The running version is shown on the **About** page.
+- Updating: `git pull` on your computer, run `scripts/build-synology.sh` again, extract the new zip on the NAS and import its images tar. Keep using your existing project folder (its `data/` holds your sign-in and settings): copy the new `docker-compose.yml` into it if it changed, then rebuild the project. The running version is shown on the **About** page.
 - If the wrapper doesn't start, check the `papple-wrapper` container log in Container Manager.

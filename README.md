@@ -301,7 +301,7 @@ Runs in **Container Manager** on x86 Synology models such as the DS220+, DS920+ 
 
 ```bash
 ./scripts/build-synology.sh ~/Downloads/AppleMusic_3.6.0-beta-1109.apk
-# → dist/synology/  papple-music-<version>.tar · wrapper-v2.tar · docker-compose.yml (with a web password)
+# → dist/synology/papple-music-<version>-synology.zip  (both images + docker-compose.yml + guide, in one file)
 ```
 
 Apple sign-in and cookies start empty. Step-by-step instructions: **[deploy/synology/README.md](deploy/synology/README.md)**.
