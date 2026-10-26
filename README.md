@@ -18,6 +18,12 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/lewisysh/papple-music/releases/download/v1.0.0/Papple-Music-1.0.0-arm64.dmg"><img alt="Download for macOS" src="https://img.shields.io/badge/Download%20for%20macOS-v1.0.0%20%C2%B7%20Apple%20Silicon-fa2d48?style=for-the-badge"></a>
+  <br>
+  <sub><a href="https://github.com/lewisysh/papple-music/releases/download/v1.0.0/Papple-Music-1.0.0-arm64.dmg">Papple-Music-1.0.0-arm64.dmg</a> · macOS 12+ · <a href="https://github.com/lewisysh/papple-music/releases">all releases</a></sub>
+</p>
+
+<p align="center">
   <img src="docs/screenshots/album-lyrics-dark.png" alt="Album page with live lyrics" width="920">
 </p>
 
@@ -93,7 +99,7 @@ Papple Music is a self-hosted web app that puts a polished, Apple Music–like i
 
 No terminal needed — Python, all libraries and ffmpeg are inside the app.
 
-1. Download **`Papple-Music-<version>-arm64.dmg`** from the [**Releases**](https://github.com/lewisysh/papple-music/releases) page (Apple Silicon Macs, macOS 12 or later).
+1. Download **[Papple-Music-1.0.0-arm64.dmg](https://github.com/lewisysh/papple-music/releases/download/v1.0.0/Papple-Music-1.0.0-arm64.dmg)** (Apple Silicon Macs, macOS 12 or later). Older and newer versions are on the [**Releases**](https://github.com/lewisysh/papple-music/releases) page.
 2. Open it and drag **Papple Music** into **Applications**.
 3. Open **Papple Music**. It opens in its own window and sits in the Dock like any other app.
 

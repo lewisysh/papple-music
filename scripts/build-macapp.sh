@@ -27,12 +27,14 @@ APP="$DIST/Papple Music.app"
 rm -rf "$DIST/Papple Music"
 
 echo "==> Creating $DMG"
-STAGE="$(mktemp -d)"
-trap 'rm -rf "$STAGE"' EXIT
-cp -R "$APP" "$STAGE/"
-ln -s /Applications "$STAGE/Applications"
+# dmgbuild lays out the window (background, icon positions) without Finder.
 rm -f "$DMG"
-hdiutil create -quiet -volname "Papple Music" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+uvx --from "dmgbuild==1.6.7" dmgbuild \
+    -s packaging/macos/dmg/settings.py \
+    -D app="$APP" \
+    -D icon="$ROOT/packaging/macos/AppIcon.icns" \
+    -D background="$ROOT/packaging/macos/dmg/background.png" \
+    "Papple Music" "$DMG"
 
 echo
 echo "Done:"
