@@ -670,7 +670,11 @@ async function downloadImport() {
         urls: picked.map((c) => c.url),
         import_name: name,
         preview: { title: name, artist: `${picked.length}곡`, artwork: picked[0].artwork || null, type: "import" },
-        overrides: { use_wrapper: wrapperReady(), ...familyOverrides(family) },
+        overrides: {
+          use_wrapper: wrapperReady(), ...familyOverrides(family),
+          dj_tags: $("#import-dj").checked,
+          ...($("#import-ref").value.trim() ? { dj_reference_dir: $("#import-ref").value.trim() } : {}),
+        },
       },
     });
     picked.forEach((c) => c.url && state.queued.add(c.url));
@@ -686,6 +690,12 @@ async function downloadImport() {
 
 async function loadImportNames() {
   // Filled on first visit: the quality helpers are defined further down.
+  // Lists are mostly for DJ sets: key/BPM on unless turned off here.
+  if (!$("#import-dj").dataset.init) {
+    $("#import-dj").dataset.init = "1";
+    $("#import-dj").checked = store.get("importDj", true);
+    $("#import-dj").addEventListener("change", () => store.set("importDj", $("#import-dj").checked));
+  }
   if (!$("#import-family").options.length) {
     $("#import-family").innerHTML = familyOptions().map((o) => `<option value="${o.family}">${esc(o.name)}</option>`).join("");
     $("#import-family").value = store.get("lastFamily", "alac");
@@ -878,7 +888,7 @@ const sheet = {
   ok: $("#dl-ok"), cancel: $("#dl-cancel"), item: null, options: [], seq: 0,
 };
 
-const OUTPUT_NAMES = { flac: "FLAC", wav: "WAV", mp3: "MP3" };
+const OUTPUT_NAMES = { flac: "FLAC", wav: "WAV", aiff: "AIFF", mp3: "MP3" };
 
 function optionRow(opt, i, checked) {
   return `
@@ -2968,6 +2978,14 @@ function trackEnd(t) {
   }
 }
 
+const DJ_SOURCE = { file: "기존 파일", getsongbpm: "GetSongBPM", deezer: "Deezer" };
+function djTag(t) {
+  if (!t.bpm && !t.music_key) return "";
+  const text = [t.bpm && `${Math.round(t.bpm)} BPM`, t.music_key].filter(Boolean).join(" · ");
+  const from = (t.dj_sources || []).map((s) => DJ_SOURCE[s] || s).join(", ");
+  return `<span class="qtag dj" title="${esc(from)}"><span>${esc(text)}</span></span>`;
+}
+
 function renderTracks(job) {
   if (!job.tracks.length) return `<p class="panel-empty">아직 트랙 정보가 없습니다.</p>`;
   return `<ol class="tracklist">${job.tracks.map((t) => {
@@ -2979,7 +2997,7 @@ function renderTracks(job) {
         <span class="t-num">${t.total ? t.index : ""}</span>
         <div class="t-main">
           <div>
-            <div class="t-title">${esc(t.title)}${qualityTag(t.quality)}</div>
+            <div class="t-title">${esc(t.title)}${qualityTag(t.quality)}${djTag(t)}</div>
             ${sub ? `<div class="t-sub${subCls}${live ? " live" : ""}" title="${esc(sub)}">${esc(sub)}</div>` : ""}
             ${t.status === "downloading" && t.progress != null ? `<div class="t-bar"><span style="width:${Math.round(t.progress * 100)}%"></span></div>` : ""}
           </div>
@@ -3572,6 +3590,7 @@ $("#btn-docker-logs-refresh").addEventListener("click", refreshDockerLogs);
 // ---------------------------------------------------------------- settings
 
 const TEMPLATE_HELP = "변수: {album} {album_artist} {artist} {title} {track:02d} {disc} {date:%Y} {composer} {media_type} · '/'로 하위 폴더를 만듭니다.";
+const DJ_HELP = "Apple Music에는 키·BPM이 없어서 ① 기존 파일 ② GetSongBPM ③ Deezer(BPM만) 순서로 찾아 넣어요. 어디에도 없으면 추측하지 않고 비워둬요. rekordbox·Serato에서는 AIFF 저장을 추천해요.";
 const SINGLE_SONG_HELP = "곡 하나의 링크로 받을 때만 적용됩니다. 앨범·플레이리스트로 받으면 각자의 폴더에 저장됩니다. 변수: {artist} {title} {album} {album_artist} {date:%Y}";
 const PLAYLIST_HELP = "플레이리스트 링크로 받을 때만 적용됩니다. 변수: {playlist_title} {playlist_artist} {playlist_track:02d} {artist} {title} {album}";
 
@@ -3629,12 +3648,18 @@ const SETTINGS_SCHEMA = [
     { key: "overwrite", label: "기존 파일 덮어쓰기", type: "bool" },
   ] },
   { title: "파일 형식", help: "ALAC으로 받은 곡을 다운로드 직후 변환합니다. 태그·커버·가사는 그대로 옮겨요. Dolby Atmos는 m4a로 남고, AAC 같은 손실 음원은 FLAC/WAV로 바꾸지 않습니다.", fields: [
-    { key: "output_format", label: "저장 형식", type: "select", options: "output_format", labels: { original: "m4a 그대로 (ALAC · AAC · Atmos)", flac: "FLAC", wav: "WAV", mp3: "MP3" } },
+    { key: "output_format", label: "저장 형식", type: "select", options: "output_format", labels: { original: "m4a 그대로 (ALAC · AAC · Atmos)", flac: "FLAC", wav: "WAV", aiff: "AIFF (DJ용 추천)", mp3: "MP3" } },
     { key: "mp3_bitrate", label: "MP3 비트레이트", type: "select", options: "mp3_bitrate", labels: { V0: "V0 (가변 최고 음질)" } },
     { key: "keep_original", label: "변환 후 원본 m4a도 남기기", type: "bool" },
   ] },
   { title: "오디오 메타데이터", help: "켠 태그만 파일에 넣습니다.", fields: [
     { key: "exclude_tags", type: "embed" },
+  ] },
+  { title: "DJ · 키와 BPM", help: DJ_HELP, fields: [
+    { key: "dj_tags", label: "받은 곡에 키·BPM 태그 넣기", type: "bool" },
+    { key: "dj_key_notation", label: "키 표기", type: "select", options: "dj_key_notation", labels: { camelot: "캠블롯 (8A)", musical: "음악 표기 (Am)", open: "오픈 키 (1m)" } },
+    { key: "dj_reference_dir", label: "기존 파일 폴더", type: "text", wide: true, help: "rekordbox·Serato가 분석한 내 파일이 있는 폴더. 같은 곡의 값을 그대로 옮겨요" },
+    { key: "getsongbpm_api_key", label: "GetSongBPM API 키", type: "password", wide: true, help: "getsongbpm.com/api 에서 무료로 받아요" },
   ] },
   { title: "한 곡 다운로드", help: SINGLE_SONG_HELP, fields: [
     { key: "single_song_folder", label: "한 곡은 Songs 폴더에 따로 저장", type: "bool" },

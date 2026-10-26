@@ -97,6 +97,7 @@ The app is built for the CPU of the Mac you build on (Apple Silicon or Intel).
 - **Search with suggestions** — type `justi` and get *justin bieber*, *justice* and top results right under the box. Arrow keys + Enter work too.
 - **Paste a link** — an Apple Music link opens its album, playlist or artist page. Song links open the album and highlight the song.
 - **Import a list** — paste "artist - title" lines (or a .txt/.csv) and Papple finds each song, lets you check the doubtful ones and downloads the rest into `Imports/<list name>/` with an M3U8 for rekordbox/Serato. Lines in Korean, Japanese or Chinese are matched against that store's local titles; importing again under the same name only fetches new songs.
+- **Key and BPM for DJs** — optional key/BPM tags for rekordbox, Serato and Traktor, copied from your own analysed files or looked up on [GetSongBPM](https://getsongbpm.com) (free API key) and Deezer. Camelot, musical or Open Key notation, and AIFF output.
 - **Browse** — genre, chart and mood categories, recent searches, album / artist / playlist / curator pages, other versions and more by the same artist.
 - **Looks great** — backgrounds tinted by the artwork, motion album covers, dark and light mode, Lossless · Hi-Res · Dolby Atmos badges.
 - **English and Korean UI** — switch any time in Settings.
@@ -364,6 +365,7 @@ Apple briefly rate-limits bursts of requests. Wait a minute and try again.
 - [glomatico/gamdl](https://github.com/glomatico/gamdl) — the download engine
 - [glomatico/wrapper-v2](https://github.com/glomatico/wrapper-v2) — ALAC decryption container
 - [FastAPI](https://fastapi.tiangolo.com) · [mutagen](https://github.com/quodlibet/mutagen) · [ffmpeg](https://ffmpeg.org) · [hls.js](https://github.com/video-dev/hls.js) (Apache-2.0)
+- Key and BPM data: [GetSongBPM](https://getsongbpm.com) and [Deezer](https://www.deezer.com) (BPM by ISRC)
 
 **Disclaimer**
 

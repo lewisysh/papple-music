@@ -140,6 +140,9 @@
             <button class="btn btn-primary" id="import-start">곡 찾기</button>
           </div>
         </div>
+        <div class="import-row import-ref">
+          <input type="text" id="import-ref" spellcheck="false" placeholder="기존 파일 폴더 (선택) · 키·BPM을 그대로 옮겨요, 예: ~/Downloads/8_30 - 9_30 ZAERON">
+        </div>
         <p class="hint">한 줄에 한 곡. 앞 번호와 재생 시간은 무시하고, CSV는 아티스트·제목 열을 읽어요. 같은 목록 이름으로 다시 가져오면 이미 받은 곡은 건너뛰어요.</p>
 
         <div id="import-results" class="hidden">
@@ -157,6 +160,7 @@
 
         <div class="import-bar hidden" id="import-bar">
           <span id="import-count"></span>
+          <label class="import-dj" title="키·BPM 넣기"><input type="checkbox" class="switch" id="import-dj"><span>키·BPM</span></label>
           <select id="import-family" aria-label="음질"></select>
           <button class="btn btn-primary" id="import-download">받기</button>
         </div>
@@ -352,6 +356,8 @@
           <a class="row" href="https://github.com/glomatico/wrapper-v2" target="_blank" rel="noopener"><span>wrapper-v2</span><span class="row-value secondary">ALAC 복호화</span></a>
           <a class="row" href="https://github.com/video-dev/hls.js" target="_blank" rel="noopener"><span>hls.js</span><span class="row-value secondary">뮤직비디오 재생</span></a>
           <a class="row" href="https://fastapi.tiangolo.com" target="_blank" rel="noopener"><span>FastAPI · mutagen · ffmpeg</span><span class="row-value secondary">서버 · 태그 · 변환</span></a>
+          <a class="row" href="https://getsongbpm.com" target="_blank" rel="noopener"><span>GetSongBPM</span><span class="row-value secondary">키·BPM 데이터</span></a>
+          <a class="row" href="https://www.deezer.com" target="_blank" rel="noopener"><span>Deezer</span><span class="row-value secondary">BPM 데이터</span></a>
         </div>
         <p class="hint about-legal">이 앱은 Apple과 관련이 없어요. Apple Music과 AirPlay는 Apple Inc.의 상표이고, Dolby Atmos는 Dolby Laboratories의 상표예요. 구독 중인 본인 계정으로 개인 소장용으로만 사용하세요.</p>
       </section>

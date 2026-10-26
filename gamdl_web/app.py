@@ -38,7 +38,7 @@ from gamdl.interface import (
 from pydantic import BaseModel, Field, ValidationError
 
 from . import __version__, docker_ctl, importer, wrapper
-from .config import DATA_DIR, JOB_OVERRIDE_FIELDS, LOG_LEVELS, MP3_BITRATES, OUTPUT_FORMATS, Settings, SettingsStore
+from .config import DATA_DIR, DJ_KEY_NOTATIONS, JOB_OVERRIDE_FIELDS, LOG_LEVELS, MP3_BITRATES, OUTPUT_FORMATS, Settings, SettingsStore
 from . import convert
 from .convert import EXTRA_TAGS
 from .formats import FormatService
@@ -226,6 +226,7 @@ async def meta():
             "drm_backend": values(DrmBackend),
             "log_level": LOG_LEVELS,
             "output_format": OUTPUT_FORMATS,
+            "dj_key_notation": DJ_KEY_NOTATIONS,
             "mp3_bitrate": MP3_BITRATES,
             "artist_auto_select": [
                 {"value": m.value, "label": ARTIST_MEDIA_TYPE_LABELS[m]} for m in ArtistMediaType

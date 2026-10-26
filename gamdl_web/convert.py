@@ -16,13 +16,14 @@ from mutagen.id3 import (
 )
 from mutagen.mp3 import MP3
 from mutagen.mp4 import MP4, MP4Cover, MP4FreeForm
+from mutagen.aiff import AIFF
 from mutagen.wave import WAVE
 from PIL import Image
 
 # Only real lossless sources become FLAC/WAV; Dolby streams are left alone.
 LOSSLESS_CODECS = {"alac", "flac", "pcm_s16le", "pcm_s24le"}
 SURROUND_CODECS = {"eac3", "ac3"}
-EXTENSIONS = {"flac": ".flac", "wav": ".wav", "mp3": ".mp3"}
+EXTENSIONS = {"flac": ".flac", "wav": ".wav", "aiff": ".aiff", "mp3": ".mp3"}
 
 # Tags gamdl does not write; stored in the m4a as iTunes freeform atoms so the
 # converters below can carry them over from a single source.
@@ -276,7 +277,7 @@ def _id3_frames(t: dict) -> list:
 
 
 def _write_id3(path: str, t: dict, kind: str) -> None:
-    audio = MP3(path) if kind == "mp3" else WAVE(path)
+    audio = MP3(path) if kind == "mp3" else AIFF(path) if kind == "aiff" else WAVE(path)
     if audio.tags is None:
         audio.add_tags()
     audio.tags.clear()
@@ -298,7 +299,7 @@ async def convert(
     codec = info.get("codec_name")
     if codec in SURROUND_CODECS:
         return None, "Dolby 음원이라 m4a 그대로 둠"
-    if output_format in {"flac", "wav"} and codec not in LOSSLESS_CODECS:
+    if output_format in {"flac", "wav", "aiff"} and codec not in LOSSLESS_CODECS:
         return None, f"손실 음원({codec})이라 {output_format.upper()} 변환 안 함"
 
     bits = int(info.get("bits_per_raw_sample") or info.get("bits_per_sample") or 16)
@@ -312,6 +313,9 @@ async def convert(
         args += ["-f", "flac"]
     elif output_format == "wav":
         args += ["-c:a", "pcm_s24le" if bits > 16 else "pcm_s16le", "-f", "wav"]
+    elif output_format == "aiff":
+        # What DJ software and CDJs read most reliably, tags (ID3) included.
+        args += ["-c:a", "pcm_s24be" if bits > 16 else "pcm_s16be", "-f", "aiff"]
     else:
         quality = ["-q:a", "0"] if mp3_bitrate == "V0" else ["-b:a", mp3_bitrate]
         args += ["-c:a", "libmp3lame", *quality, "-id3v2_version", "3", "-f", "mp3"]

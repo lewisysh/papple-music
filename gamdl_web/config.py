@@ -61,7 +61,8 @@ ENUM_LIST_FIELDS: dict[str, type] = {
     "music_video_codec_priority": MusicVideoCodec,
 }
 LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR"]
-OUTPUT_FORMATS = ["original", "flac", "wav", "mp3"]
+OUTPUT_FORMATS = ["original", "flac", "wav", "aiff", "mp3"]
+DJ_KEY_NOTATIONS = ["camelot", "musical", "open"]
 MP3_BITRATES = ["320k", "256k", "192k", "V0"]
 
 
@@ -152,6 +153,11 @@ class Settings(BaseModel):
     playlist_track_template: str = "Playlists/{playlist_title}/{playlist_track:02d} {title}"
     single_song_folder: bool = True
     single_song_template: str = "Songs/{artist} - {title}"
+    # Key/BPM tags for DJ software (see dj.py for where they come from).
+    dj_tags: bool = False
+    dj_key_notation: str = "camelot"
+    dj_reference_dir: str = ""
+    getsongbpm_api_key: str = ""
     exclude_tags: list[str] = []
     truncate: int | None = None
 
@@ -182,6 +188,13 @@ class Settings(BaseModel):
     def _check_output_format(cls, value: str) -> str:
         if value not in OUTPUT_FORMATS:
             raise ValueError(f"must be one of {', '.join(OUTPUT_FORMATS)}")
+        return value
+
+    @field_validator("dj_key_notation")
+    @classmethod
+    def _check_key_notation(cls, value: str) -> str:
+        if value not in DJ_KEY_NOTATIONS:
+            raise ValueError(f"must be one of {', '.join(DJ_KEY_NOTATIONS)}")
         return value
 
     @field_validator("mp3_bitrate")
@@ -224,6 +237,8 @@ JOB_OVERRIDE_FIELDS = {
     # Imported lists save into their own folder.
     "single_song_folder",
     "single_song_template",
+    "dj_tags",
+    "dj_reference_dir",
 }
 
 

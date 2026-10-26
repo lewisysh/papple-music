@@ -26,7 +26,7 @@ from gamdl.interface import (
     GamdlInterfaceUrlParseError,
 )
 
-from . import convert, importer, motion
+from . import convert, dj, importer, motion
 from . import progress
 from .config import SettingsStore
 from .events import EventBus
@@ -95,6 +95,11 @@ class Track:
     bytes_total: int | None = None
     # The downloaded file's real format, e.g. {"codec": "alac", "bits": 24, "rate": 96000}.
     quality: dict[str, Any] | None = None
+    isrc: str | None = None
+    # Written for DJ software: BPM, key and where they came from (file/getsongbpm/deezer).
+    bpm: float | None = None
+    music_key: str | None = None
+    dj_sources: list[str] | None = None
 
     def public(self) -> dict[str, Any]:
         return self.__dict__.copy()
@@ -161,6 +166,7 @@ class JobManager:
         self._worker: asyncio.Task | None = None
         self._running: tuple[str, asyncio.Task] | None = None
         self.motion = None  # MotionService, attached by the app
+        self._dj: dict[str, dict] = {}  # per running job: reference folder index, lookups
 
     # ---- lifecycle -------------------------------------------------------
 
@@ -302,6 +308,9 @@ class JobManager:
         finally:
             job.finished_at = time.time()
             self.broker.cancel_job(job.id)
+            ctx = self._dj.pop(job.id, None)
+            if ctx:
+                await ctx["lookup"].close()
             if session:
                 await session.close()
             self._publish(job)
@@ -396,6 +405,8 @@ class JobManager:
                         if converting and os.path.exists(item.final_path):
                             progress.report("convert")
                             await self._convert(track, item, settings, log)
+                        if settings.dj_tags and media_type in {"songs", "library-songs"}:
+                            await self._dj_tags(job, track, settings, log)
                         track.status = "done"
                 if token is not None:
                     progress.reporter.reset(token)
@@ -466,6 +477,27 @@ class JobManager:
         except Exception as e:
             log.warning(f"움직이는 커버를 저장하지 못했습니다: {e}")
 
+    async def _dj_tags(self, job: Job, track: Track, settings, log) -> None:
+        """Key/BPM from the user's own files, GetSongBPM or Deezer (never guessed)."""
+        if not track.path or Path(track.path).suffix.lower() not in dj.AUDIO_EXTENSIONS:
+            return
+        ctx = self._dj.get(job.id)
+        if ctx is None:
+            ref = None
+            if settings.dj_reference_dir:
+                ref = await asyncio.to_thread(dj.ReferenceFolder, settings.dj_reference_dir)
+                log.info(f"기존 파일 {len(ref.entries)}곡에서 키·BPM을 찾습니다")
+            ctx = self._dj[job.id] = {"ref": ref, "lookup": dj.Lookup(settings.getsongbpm_api_key)}
+        try:
+            result = await dj.tag_track(
+                track.path, song_id=track.media_id, title=track.title, artist=track.artist, isrc=track.isrc,
+                reference=ctx["ref"], lookup=ctx["lookup"], notation=settings.dj_key_notation,
+            )
+        except Exception as e:
+            log.warning(f'키·BPM을 넣지 못했습니다 "{track.title}": {e}')
+            return
+        track.bpm, track.music_key, track.dj_sources = result["bpm"], result["key"], result["sources"]
+
     async def _convert(self, track: Track, item, settings, log) -> None:
         try:
             new_path, note = await convert.convert(
@@ -499,6 +531,7 @@ class JobManager:
                 artist=attributes.get("artistName"),
                 kind=media_type,
                 artwork=_artwork(attributes, 300),
+                isrc=attributes.get("isrc"),
             )
             job.tracks[key] = track
         else:
@@ -506,4 +539,5 @@ class JobManager:
             track.artist = attributes.get("artistName") or track.artist
             track.kind = media_type or track.kind
             track.artwork = track.artwork or _artwork(attributes, 300)
+            track.isrc = track.isrc or attributes.get("isrc")
         return track
