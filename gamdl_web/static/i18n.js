@@ -550,6 +550,8 @@ const I18N_EN = {
 "이 APK에는 {}용 Apple Music 라이브러리가 없습니다": "This APK has no Apple Music libraries for {}",
 "버전이 다른 APK입니다 (3.6.0-beta 1109가 필요해요)": "Wrong APK version (3.6.0-beta 1109 is required)",
 "APK 파일을 읽을 수 없습니다": "Can't read the APK file",
+"Apple Music APK가 아닙니다": "Not an Apple Music APK",
+"Apple Music {} APK예요. 3.6.0-beta (1109)가 필요해요": "This is Apple Music {} — version 3.6.0-beta (1109) is required",
 "wrapper-v2 정보를 받지 못했습니다. 인터넷 연결을 확인하세요.": "Couldn't get wrapper-v2 info. Check your internet connection.",
 "APK(.apk / .apkm) 파일만 올릴 수 있습니다": "Only APK files (.apk / .apkm) can be uploaded",
 "이미 설치 중입니다": "Already installing",

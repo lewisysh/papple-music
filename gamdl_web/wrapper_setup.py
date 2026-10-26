@@ -39,6 +39,8 @@ LIBS_VERSION_URL = "https://raw.githubusercontent.com/glomatico/wrapper-v2/main/
 IMAGE = os.environ.get("GAMDL_WEB_WRAPPER_IMAGE", "wrapper-v2:latest")
 SENTINEL = "libandroidappmusic.so"
 APK_SUFFIXES = {".apk", ".apkm", ".xapk"}
+APPLE_MUSIC_PACKAGE = "com.apple.android.music"
+APK_VERSION_RE = re.compile(r"\d+\.\d+(?:\.\d+)*(?:-beta)?")
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 STEPS = ["source", "libs", "system", "build", "start", "health"]
 SEARCH_DIRS = [APK_DIR, Path.home() / "Downloads", Path.home() / "Desktop"]
@@ -63,6 +65,31 @@ def _lib_dir(zf: zipfile.ZipFile, arch: str) -> str | None:
     names = set(zf.namelist())
     candidates = ["lib/arm64-v8a", "lib/arm64"] if arch == "arm64-v8a" else ["lib/x86_64", "lib/x86"]
     return next((d for d in candidates if f"{d}/{SENTINEL}" in names), None)
+
+
+def identify_apk(path: Path) -> tuple[bool, str | None]:
+    """(is it Apple Music, its version name) from the file's contents, not its name.
+
+    .apkm / .xapk bundles describe themselves in info.json / manifest.json; a plain
+    .apk carries the package name in its (binary, UTF-16) AndroidManifest.xml.
+    """
+    try:
+        with zipfile.ZipFile(path) as zf:
+            names = set(zf.namelist())
+            for meta in ("info.json", "manifest.json"):
+                if meta in names:
+                    data = json.loads(zf.read(meta))
+                    package = data.get("pname") or data.get("package_name")
+                    return package == APPLE_MUSIC_PACKAGE, data.get("release_version") or data.get("version_name")
+            if "AndroidManifest.xml" in names:
+                manifest = zf.read("AndroidManifest.xml")
+                if APPLE_MUSIC_PACKAGE.encode("utf-16-le") not in manifest:
+                    return False, None
+                version = APK_VERSION_RE.search(manifest.decode("utf-16-le", "ignore"))
+                return True, version.group(0) if version else None
+            return any(n.endswith("/" + SENTINEL) for n in names), None
+    except (zipfile.BadZipFile, OSError, ValueError, KeyError):
+        return False, None
 
 
 def _open_libs(apk: Path, arch: str) -> tuple[zipfile.ZipFile, str]:
@@ -121,15 +148,21 @@ class WrapperSetup:
         if key in self._apk_cache:
             return self._apk_cache[key]
         expected = (await self.libs_version())["libs"][arch].get(SENTINEL)
-        info = {"path": str(path), "name": path.name, "ok": False, "message": None}
+        info = {"path": str(path), "name": path.name, "ok": False, "message": None, "apple_music": False, "version": None}
 
         def check() -> None:
+            info["apple_music"], info["version"] = identify_apk(path)
+            if not info["apple_music"]:
+                info["message"] = "Apple Music APK가 아닙니다"
+                return
             try:
                 zf, lib_dir = _open_libs(path, arch)
                 with zf:
                     actual = _sha256(zf.read(f"{lib_dir}/{SENTINEL}"))
                 if actual == expected:
                     info["ok"] = True
+                elif info["version"]:
+                    info["message"] = f"Apple Music {info['version']} APK예요. 3.6.0-beta (1109)가 필요해요"
                 else:
                     info["message"] = "버전이 다른 APK입니다 (3.6.0-beta 1109가 필요해요)"
             except (zipfile.BadZipFile, SetupError, KeyError) as e:
@@ -140,23 +173,28 @@ class WrapperSetup:
         return info
 
     async def find_apk(self) -> dict | None:
-        """Newest matching APK in the app folder, Downloads or Desktop."""
+        """Newest usable Apple Music APK in the app folder, Downloads or Desktop.
+
+        Files are recognised by what is inside them, so any file name works. If the
+        only Apple Music APKs found are the wrong version, the newest one is
+        returned so the UI can say which version it is.
+        """
         candidates: list[Path] = []
         for folder in SEARCH_DIRS:
             try:
                 candidates += [
                     p for p in folder.iterdir()
-                    if p.suffix.lower() in APK_SUFFIXES and p.is_file() and p.stat().st_size > 20_000_000
+                    if p.suffix.lower() in APK_SUFFIXES and p.is_file() and p.stat().st_size > 5_000_000
                 ]
             except OSError:
                 continue
         candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
         mismatch = None
-        for path in candidates[:12]:
+        for path in candidates:
             info = await self.check_apk(path)
             if info["ok"]:
                 return info
-            if mismatch is None and "music" in path.name.lower():
+            if mismatch is None and info["apple_music"]:
                 mismatch = info
         return mismatch
 

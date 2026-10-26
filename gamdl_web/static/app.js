@@ -3192,7 +3192,7 @@ function renderSetup() {
       : !d.docker.running ? '<button class="btn btn-gray" data-setup="open-docker">OrbStack 열기</button>' : "");
   const apkBody = setup.uploading ? "올리는 중…"
     : apkOk ? esc(d.apk.name)
-      : d.apk ? `${esc(d.apk.name)} · ${esc(d.apk.message || "")}`
+      : d.apk ? `${esc(d.apk.name)} · <span>${esc(d.apk.message || "")}</span>`
         : d.apk_error ? esc(d.apk_error)
           : "Apple Music APK 3.6.0-beta (1109)를 받아 다운로드 폴더에 두면 자동으로 찾아요. 파일을 여기로 끌어다 놓아도 돼요.";
   const apk = setupStepRow(2, apkOk, "Apple Music APK", apkBody,
