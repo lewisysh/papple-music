@@ -35,7 +35,7 @@ When it finishes you get **one file**: `dist/synology/papple-music-<version>-syn
    - Path: the extracted folder
    - Source: **Use existing docker-compose.yml**
    - Skip the web portal settings and finish
-4. Open `http://NAS-IP:8765` in a browser. Use any username; the password is the `GAMDL_WEB_PASSWORD` value in `docker-compose.yml`.
+4. Open `http://NAS-IP:18765` in a browser. Use any username; the password is the `GAMDL_WEB_PASSWORD` value in `docker-compose.yml`.
 
 ## 3. First-time setup
 
@@ -67,5 +67,6 @@ Thanks to `GAMDL_WEB_UMASK: "000"`, downloaded files can be renamed or deleted r
 
 - The container start/stop buttons on the **Docker** tab don't work inside a container. Use Container Manager instead.
 - For access from outside your home, don't open the port directly — use Synology's **reverse proxy + HTTPS** or a VPN such as Tailscale.
+- Since 1.0.0 the web UI listens on port **18765** (it was 8765). If you set it up before, copy the new `docker-compose.yml` into your project folder when updating.
 - Updating: `git pull` on your computer, run `scripts/build-synology.sh` again, extract the new zip on the NAS and import its images tar. Keep using your existing project folder (its `data/` holds your sign-in and settings): copy the new `docker-compose.yml` into it if it changed, then rebuild the project. The running version is shown on the **About** page.
 - If the wrapper doesn't start, check the `papple-wrapper` container log in Container Manager.

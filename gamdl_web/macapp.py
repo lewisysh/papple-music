@@ -9,6 +9,7 @@ not used by `uv run papple-music`.
 
 from __future__ import annotations
 
+import json
 import multiprocessing
 import os
 import plistlib
@@ -65,7 +66,7 @@ T = {
     "main_window": ("Papple Music", "Papple Music"),
     "ok": ("확인", "OK"),
     "cancel": ("취소", "Cancel"),
-    "port_busy": ("포트 {port}을(를) 다른 프로그램이 쓰고 있어 시작할 수 없습니다.", "Port {port} is used by another program, so Papple Music can't start."),
+    "port_busy": ("포트 {port}부터 {last}까지 모두 다른 프로그램이 쓰고 있어 시작할 수 없습니다.", "Ports {port}–{last} are all used by other programs, so Papple Music can't start."),
     "loading": ("Papple Music을 시작하는 중…", "Starting Papple Music…"),
 }
 
@@ -103,9 +104,22 @@ def _port_open(port: int) -> bool:
 def _is_papple(port: int) -> bool:
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/meta", timeout=2) as r:
-            return r.status == 200
+            return r.status == 200 and "gamdl_version" in json.load(r)
     except Exception:
         return False
+
+
+def _pick_port(first: int, tries: int = 20) -> tuple[int | None, bool]:
+    """First port from `first` that is free or already runs Papple Music.
+
+    Returns (port, already_running); port is None when every one is taken.
+    """
+    for port in range(first, first + tries):
+        if not _port_open(port):
+            return port, False
+        if _is_papple(port):
+            return port, True
+    return None, False
 
 
 def _app_path() -> Path:
@@ -163,10 +177,9 @@ def main() -> None:
     from Foundation import NSURL, NSMakeRect, NSObject, NSURLRequest
     from WebKit import WKWebView, WKWebViewConfiguration
 
-    from .config import DATA_DIR, SettingsStore
+    from .config import DATA_DIR, DEFAULT_PORT, SettingsStore
 
-    port = int(os.environ.get("GAMDL_WEB_PORT", 8765))
-    url = f"http://127.0.0.1:{port}"
+    first_port = int(os.environ.get("GAMDL_WEB_PORT", DEFAULT_PORT))
     background = "--background" in sys.argv
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -174,15 +187,17 @@ def main() -> None:
     sys.stdout = sys.stderr = log
     _use_bundled_ffmpeg(DATA_DIR)
 
-    # Reuse a server that is already running (e.g. `uv run papple-music`).
+    # Reuse a server that is already running (e.g. `uv run papple-music`); if
+    # another program holds the port, move on to the next free one.
     server = thread = None
-    external = _port_open(port)
-    if external and not _is_papple(port):
+    port, external = _pick_port(first_port)
+    if port is None:
         NSApplication.sharedApplication()
         alert = NSAlert.alloc().init()
-        alert.setMessageText_(tr("port_busy").format(port=port))
+        alert.setMessageText_(tr("port_busy").format(port=first_port, last=first_port + 19))
         alert.runModal()
         return
+    url = f"http://127.0.0.1:{port}"
     if not external:
         import uvicorn
 

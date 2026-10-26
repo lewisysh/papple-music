@@ -3,7 +3,7 @@
 # 1. Import papple-music.tar and wrapper-v2.tar as images
 #    (Container Manager > Image > Add > Add from file).
 # 2. Create a project from this file (Container Manager > Project > Create).
-# 3. Open http://<NAS-IP>:8765 and sign in with any username + the password below.
+# 3. Open http://<NAS-IP>:18765 and sign in with any username + the password below.
 #
 # Apple ID login and cookies start empty; sign in from the Wrapper tab.
 
@@ -39,7 +39,7 @@ services:
       GAMDL_WEB_UMASK: "000"
       TZ: Asia/Seoul
     ports:
-      - "8765:8765"
+      - "18765:18765"
     volumes:
       # Settings, cookies and caches (empty on first start).
       - ./data/web:/data

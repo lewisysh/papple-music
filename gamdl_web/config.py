@@ -21,6 +21,9 @@ from gamdl.interface import (
 )
 from pydantic import BaseModel, Field, field_validator
 
+# Uncommon on purpose: 8765, the old default, is taken by apps such as AnkiConnect.
+DEFAULT_PORT = 18765
+
 DATA_DIR = Path(
     os.environ.get("GAMDL_WEB_DATA_DIR", Path.home() / ".gamdl-web")
 ).expanduser()

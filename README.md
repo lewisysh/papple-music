@@ -164,7 +164,7 @@ cd papple-music
 uv run papple-music --open
 ```
 
-Your browser opens <http://127.0.0.1:8765>. That's it! 🎉
+Your browser opens <http://127.0.0.1:18765>. That's it! 🎉
 
 **3. Sign in** — searching and browsing work right away. To download and play, set up one of the [sign-in options](#signing-in-cookies-vs-wrapper).
 
@@ -275,7 +275,7 @@ Everything important in gamdl can be changed on the Settings page. The file is `
 
 | Name | Description |
 | --- | --- |
-| `GAMDL_WEB_HOST`, `GAMDL_WEB_PORT` | Server address (default `127.0.0.1:8765`). Also `--host` / `--port`. |
+| `GAMDL_WEB_HOST`, `GAMDL_WEB_PORT` | Server address (default `127.0.0.1:18765`). Also `--host` / `--port`. |
 | `GAMDL_WEB_PASSWORD` | Enables HTTP Basic auth (any username). Required when listening on anything other than `127.0.0.1`. |
 | `GAMDL_WEB_ALLOWED_HOSTS` | Extra host names allowed without a password (comma-separated) |
 | `GAMDL_WEB_DATA_DIR` | Settings, cookies and caches (default `~/.gamdl-web`) |
@@ -293,7 +293,7 @@ Everything important in gamdl can be changed on the Settings page. The file is `
 GAMDL_WEB_PASSWORD='a-long-password' docker compose --profile web up -d --build
 ```
 
-Downloads go to `./downloads` (change with `GAMDL_WEB_DOWNLOADS=/path`), settings and cookies to `./data/web`. The port is only published on `127.0.0.1:8765`.
+Downloads go to `./downloads` (change with `GAMDL_WEB_DOWNLOADS=/path`), settings and cookies to `./data/web`. The port is only published on `127.0.0.1:18765`.
 
 ### Synology NAS (Intel / AMD models)
 
@@ -312,6 +312,12 @@ Apple sign-in and cookies start empty. Step-by-step instructions: **[deploy/syno
 ---
 
 ## FAQ
+
+<details>
+<summary><b>"Port … is used by another program"</b></summary>
+
+Papple Music listens on port **18765**. The Mac app moves on to the next free port by itself (up to 18784), so this only shows up when all of them are taken. From source, pick another one with `uv run papple-music --port 18800` or `GAMDL_WEB_PORT=18800`.
+</details>
 
 <details>
 <summary><b>I don't see ALAC options</b></summary>

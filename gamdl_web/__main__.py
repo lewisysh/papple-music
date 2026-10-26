@@ -7,9 +7,11 @@ import uvicorn
 
 
 def main() -> None:
+    from .config import DEFAULT_PORT
+
     parser = argparse.ArgumentParser(prog="papple-music", description="Papple Music: web GUI for gamdl")
     parser.add_argument("--host", default=os.environ.get("GAMDL_WEB_HOST", "127.0.0.1"))
-    parser.add_argument("--port", type=int, default=int(os.environ.get("GAMDL_WEB_PORT", 8765)))
+    parser.add_argument("--port", type=int, default=int(os.environ.get("GAMDL_WEB_PORT", DEFAULT_PORT)))
     parser.add_argument("--open", action="store_true", help="open the browser after start")
     args = parser.parse_args()
 

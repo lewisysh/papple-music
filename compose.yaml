@@ -43,7 +43,7 @@ services:
       GAMDL_WEB_WRAPPER_DECRYPT_HOST: wrapper
       GAMDL_WEB_WRAPPER_DECRYPT_PORT: "10020"
     ports:
-      - "127.0.0.1:${GAMDL_WEB_PORT:-8765}:8765"
+      - "127.0.0.1:${GAMDL_WEB_PORT:-18765}:18765"
     volumes:
       - ./data/web:/data
       - ${GAMDL_WEB_DOWNLOADS:-./downloads}:/downloads

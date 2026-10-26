@@ -23,5 +23,5 @@ ENV PATH=/app/.venv/bin:$PATH \
     GAMDL_WEB_DATA_DIR=/data \
     GAMDL_WEB_OUTPUT_PATH=/downloads
 VOLUME ["/data", "/downloads"]
-EXPOSE 8765
+EXPOSE 18765
 CMD ["python", "-m", "gamdl_web"]
