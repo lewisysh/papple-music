@@ -2916,10 +2916,15 @@ function stageText(t) {
   return label;
 }
 
+const SONG_LINK_RE = /\/song\/|[?&]i=\d/;
+
 function jobProgress(job) {
   const c = job.counts;
   const finished = (c.done || 0) + (c.skipped || 0) + (c.error || 0) + (c.cancelled || 0);
-  const expected = Math.max(c.total, job.urls.length === 1 ? job.collections.reduce((n, col) => n + (col.count || 0), 0) : 0);
+  // Known up front: one song per song link plus each album/playlist's track count.
+  // Tracks only appear as they're reached, so their count alone grows 1/2, 2/3, ...
+  const songLinks = job.urls.filter((u) => SONG_LINK_RE.test(u)).length;
+  const expected = Math.max(c.total, songLinks + job.collections.reduce((n, col) => n + (col.count || 0), 0));
   const active = job.tracks.filter((t) => t.status === "downloading");
   const partial = active.reduce((n, t) => n + (t.progress || 0), 0);
   const pct = job.status === "done" ? 100 : expected ? Math.min(100, ((finished + partial) / expected) * 100) : 0;
