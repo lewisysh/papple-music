@@ -192,7 +192,8 @@ const I18N_EN = {
 "2단계 인증 코드를 입력하세요": "Enter the 2FA code",
 "로그인 실패 ({}): {}": "Sign-in failed ({}): {}",
 "인증 실패 ({}): {}": "Verification failed ({}): {}",
-"{} 계정 · 스토어 {} · 구독 {}{}": "{} account · storefront {} · subscription {}{}",
+// No two {} side by side: each must match at least one character.
+"{} 계정 · 스토어 {} · 구독 {}": "{} account · storefront {} · subscription {}",
 "· {}부터": " · since {}",
 "시작": "Start",
 "중지": "Stop",

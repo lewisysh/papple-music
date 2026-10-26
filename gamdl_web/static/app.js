@@ -3145,7 +3145,8 @@ async function wrapperLogout() {
 async function checkAccount(useWrapper) {
   try {
     const r = await api("/api/account/check", { method: "POST", body: { use_wrapper: useWrapper } });
-    const msg = `${r.source === "wrapper" ? "wrapper" : "쿠키"} 계정 · 스토어 ${r.storefront.toUpperCase()} · 구독 ${r.active_subscription ? "활성" : "없음"}${r.restricted ? " · 콘텐츠 제한 있음" : ""}`;
+    const msg = `${r.source === "wrapper" ? "wrapper" : "쿠키"} 계정 · 스토어 ${r.storefront.toUpperCase()} · 구독 ${r.active_subscription ? "활성" : "비활성"}`
+      + (r.restricted ? " · 콘텐츠 제한 있음" : "");
     toast(msg, r.active_subscription ? "ok" : "err");
   } catch (err) {
     toast(err.message, "err");
