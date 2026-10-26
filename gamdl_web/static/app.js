@@ -411,8 +411,17 @@ composer.urls.addEventListener("input", () => { autosize(); querySuggest(); });
 composer.urls.addEventListener("focus", querySuggest);
 // A tap on a suggestion blurs the box first on iOS; keep the list until the tap lands.
 composer.urls.addEventListener("blur", () => { if (!suggestPress) hideSuggest(); });
+// Korean IMEs: Enter on a syllable still being composed only commits it in
+// Chrome, so a search needed a second Enter. Submit once the syllable lands.
+// Japanese and Chinese use Enter to confirm a conversion, so those stay as is.
+let enterWhileComposing = false;
+composer.urls.addEventListener("compositionend", (e) => {
+  if (!enterWhileComposing) return;
+  enterWhileComposing = false;
+  if (/[\uac00-\ud7a3\u3131-\u318e]$/.test(e.data || "")) setTimeout(submitSearch);
+});
 composer.urls.addEventListener("keydown", (e) => {
-  if (e.isComposing) return;
+  if (e.isComposing) { enterWhileComposing = e.key === "Enter" && !e.shiftKey; return; }
   const open = !suggest.box.classList.contains("hidden");
   if (open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
     e.preventDefault();
