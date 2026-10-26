@@ -1435,9 +1435,10 @@ $("#detail").addEventListener("click", (e) => {
 
 // ---------------------------------------------------------------- account & library
 
-async function loadMe() {
+// `refresh` makes the server retry the account right away (e.g. after signing in).
+async function loadMe(refresh = false) {
   let me;
-  try { me = await api("/api/me"); } catch { return; }
+  try { me = await api(`/api/me${refresh ? "?refresh=1" : ""}`); } catch { return; }
   state.me = me;
   const profile = me.profile;
   const link = $("#sb-profile");
@@ -3094,6 +3095,14 @@ async function refreshWrapper() {
   }
   updateWrapperIndicator();
   renderWrapperStatus();
+  // Signed in (here, in another tab, or the wrapper came up) but the sidebar is
+  // still empty: load the profile and library now.
+  // Once per sign-in, so an account with no playlists isn't asked every poll.
+  if (!wrapperReady()) state.meForSignIn = false;
+  else if (!state.meForSignIn && !state.me?.profile && !state.me?.playlists?.length) {
+    state.meForSignIn = true;
+    loadMe(true);
+  }
   const key = `${state.wrapper.reachable}|${state.wrapper.me?.auth?.state}|${state.awaiting2fa}`;
   if (key !== state.loginKey) {
     state.loginKey = key;
@@ -3111,7 +3120,7 @@ async function wrapperLogin(e) {
       method: "POST",
       body: { username: $("#login-user").value, password: $("#login-pass").value },
     });
-    if (res.status === 200) { toast("로그인되었습니다", "ok"); loadMe(); }
+    if (res.status === 200) { toast("로그인되었습니다", "ok"); loadMe(true); }
     else if (res.status === 202) { state.awaiting2fa = true; toast("2단계 인증 코드를 입력하세요"); }
     else toast(`로그인 실패 (${res.status}): ${res.body?.error || res.body?.detail || JSON.stringify(res.body)}`, "err");
   } catch (err) {
@@ -3126,7 +3135,7 @@ async function wrapper2fa(e) {
   e.submitter.disabled = true;
   try {
     const res = await api("/api/wrapper/2fa", { method: "POST", body: { code: $("#tfa-code").value } });
-    if (res.status < 300) { state.awaiting2fa = false; toast("로그인되었습니다", "ok"); loadMe(); }
+    if (res.status < 300) { state.awaiting2fa = false; toast("로그인되었습니다", "ok"); loadMe(true); }
     else toast(`인증 실패 (${res.status}): ${res.body?.error || JSON.stringify(res.body)}`, "err");
   } catch (err) {
     toast(err.message, "err");

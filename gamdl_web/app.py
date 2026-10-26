@@ -461,9 +461,11 @@ async def browse(request: Request):
 
 
 @app.get("/api/me")
-async def me(request: Request):
+async def me(request: Request, refresh: bool = False):
     search = _state(request).search
     try:
+        if refresh:
+            await search.refresh_account()
         profile, playlists = await asyncio.gather(search.profile(), search.library_playlists())
     except SearchError as e:
         raise HTTPException(502, str(e))

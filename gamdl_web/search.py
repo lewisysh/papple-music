@@ -22,6 +22,9 @@ ALBUM_IN_URL_RE = re.compile(r"/album/[^/]+/(\d+)")
 SEARCH_TYPES = ("songs", "albums", "artists", "playlists", "music-videos")
 ANONYMOUS_STOREFRONT = "us"
 SESSION_TTL = 20 * 60
+# Without an account the session is retried this often, so signing in (wrapper
+# login, new cookies) is picked up without waiting for SESSION_TTL.
+ANONYMOUS_RETRY = 15
 
 
 class SearchError(Exception):
@@ -183,7 +186,7 @@ class SearchService:
                 not fresh
                 and self._api is not None
                 and key == self._key
-                and time.time() - self._created < SESSION_TTL
+                and time.time() - self._created < (ANONYMOUS_RETRY if self._anonymous else SESSION_TTL)
             ):
                 return self._api
             await self._close_api()
@@ -368,7 +371,13 @@ class SearchService:
         playlists = ((curator.get("relationships") or {}).get("playlists") or {}).get("data", [])
         return {"item": item, "playlists": [_item(p) for p in playlists if p.get("attributes")]}
 
+    async def refresh_account(self) -> None:
+        """Retry signing in now if the session was built without an account."""
+        if self._anonymous or self._api is None:
+            await self._session(fresh=True)
+
     async def profile(self) -> dict[str, Any] | None:
+        await self._session()
         if self._anonymous:
             return None
         raw = await self._get("/v1/me/social/profile", missing_ok=True)
@@ -384,6 +393,7 @@ class SearchService:
         }
 
     async def library_playlists(self) -> list[dict]:
+        await self._session()
         if self._anonymous:
             return []
         playlists, offset = [], 0
