@@ -943,6 +943,60 @@ body.panel-open .content { padding-right: 380px; }
 /* Invisible, but with a box: Safari anchors the AirPlay list to it. */
 #audio { display: block; position: fixed; left: 50%; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
+/* ---------- paste a list ---------- */
+.composer-links { margin: 10px 4px 0; }
+.composer-links .btn-link { display: inline-flex; align-items: center; gap: 6px; padding: 0; font-size: 13.5px; }
+.composer-links .icon { font-size: 15px; }
+.import-input { padding: 12px; transition: box-shadow 0.2s; }
+.import-input.drop { box-shadow: 0 0 0 2px var(--accent), var(--shadow); }
+#import-text {
+  width: 100%; min-height: 180px; resize: vertical; padding: 10px 12px; border: 0; border-radius: 10px;
+  background: var(--fill-2); color: var(--label); font: 13.5px/1.55 var(--font-mono, ui-monospace, monospace);
+}
+#import-text:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+.import-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+#import-name { flex: 1; min-width: 180px; }
+.import-file { cursor: pointer; }
+.import-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 26px 2px 10px; }
+.import-list { list-style: none; margin: 0 0 96px; padding: 0; }
+.imp-row {
+  position: relative; display: grid; grid-template-columns: 22px 22px minmax(0, 0.7fr) minmax(0, 1.6fr) auto;
+  align-items: center; gap: 10px; padding: 8px 14px; min-height: 58px;
+}
+.imp-row + .imp-row::before { content: ""; position: absolute; top: 0; left: 70px; right: 0; border-top: 1px solid var(--separator); }
+.imp-check { width: 17px; height: 17px; accent-color: var(--accent); }
+.imp-status { display: grid; place-items: center; font-size: 17px; color: var(--label-2); }
+.imp-row.sure .imp-status, .imp-row.have .imp-status { color: var(--green, #30d158); }
+.imp-row.check .imp-status { color: var(--orange, #ff9f0a); }
+.imp-row.none .imp-status { color: var(--red, #ff453a); }
+.imp-row.have { opacity: 0.6; }
+.imp-line { min-width: 0; font-size: 13px; color: var(--label-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.imp-match { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.imp-match .song-art { width: 40px; height: 40px; flex: none; border-radius: 6px; overflow: hidden; }
+.imp-match .song-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.imp-text { display: flex; flex-direction: column; min-width: 0; font-size: 13.5px; }
+.imp-text b { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.imp-text small { font-size: 12px; color: var(--label-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.imp-actions { display: flex; align-items: center; gap: 6px; }
+.imp-pick { max-width: 170px; font-size: 12px; }
+.import-bar {
+  position: sticky; bottom: 96px; z-index: 5; display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+  margin-top: -80px; padding: 10px 12px; border-radius: 14px;
+  background: var(--glass); box-shadow: var(--liquid-edge), var(--shadow-pop);
+  backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
+}
+#import-count { margin-right: auto; font-size: 13.5px; font-weight: 600; }
+@media (max-width: 760px) {
+  .imp-row { grid-template-columns: 22px 20px minmax(0, 1fr) auto; }
+  .imp-line { grid-column: 3 / -1; order: -1; padding-left: 0; }
+  .imp-row .imp-check { grid-row: span 2; }
+  /* The candidate picker gets its own line under the match. */
+  .imp-actions:has(.imp-pick) { grid-column: 3 / -1; justify-content: space-between; }
+  .imp-pick { max-width: none; flex: 1; }
+  .import-bar { bottom: calc(var(--tab-top) + 12px); }
+  body.has-player .import-bar { bottom: calc(var(--tab-top) + 78px); }
+}
+
 /* ---------- about ---------- */
 .about-hero { display: flex; align-items: center; gap: 20px; margin: 8px 0 28px; }
 .about-icon { width: 84px; height: 84px; flex: none; border-radius: 20px; box-shadow: var(--shadow); }

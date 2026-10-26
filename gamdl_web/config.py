@@ -221,6 +221,9 @@ JOB_OVERRIDE_FIELDS = {
     "synced_lyrics_only",
     "overwrite",
     "save_cover",
+    # Imported lists save into their own folder.
+    "single_song_folder",
+    "single_song_template",
 }
 
 

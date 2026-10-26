@@ -144,6 +144,7 @@ const TYPE_LABEL = {
   albums: "앨범", "library-albums": "보관함 앨범", playlists: "플레이리스트",
   "library-playlists": "보관함 플레이리스트", artists: "아티스트",
   songs: "곡", "library-songs": "곡", "music-videos": "뮤직비디오", "uploaded-videos": "영상",
+  import: "목록",
 };
 const CODEC_NAMES = {
   "aac-web": "AAC", "aac-he-web": "AAC-HE", aac: "AAC 48kHz", "aac-he": "AAC-HE 48kHz",
@@ -181,7 +182,7 @@ const tabPath = (tab) => (tab === "search" && state.search.path) || TAB_PATHS[ta
 const currentPath = () => location.pathname + location.search;
 
 function showPage(name) {
-  const tab = name === "detail" ? "search" : name;
+  const tab = name === "detail" || name === "import" ? "search" : name;
   $$(".sb-nav button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   $$(".page").forEach((p) => p.classList.toggle("active", p.id === `tab-${name}`));
   if (name !== "detail") {
@@ -255,6 +256,7 @@ function route() {
   }
   if (head === "downloads") { showPage("download"); return; }
   if (head === "wrapper" || head === "settings" || head === "about") { showPage(head); return; }
+  if (head === "import") { showPage("import"); document.title = `목록 가져오기 · ${brand.name}`; loadImportNames(); return; }
   if (head === "library" && rest[0] === "playlist" && rest[1]) {
     showPage("detail");
     loadDetail("library-playlists", rest[1]);
@@ -549,6 +551,200 @@ suggest.box.addEventListener("pointermove", (e) => {
   if (row && Number(row.dataset.sg) !== suggest.index) { suggest.index = Number(row.dataset.sg); markSuggest(); }
 });
 $("#btn-search").addEventListener("click", submitSearch);
+// ---------------------------------------------------------------- paste a list
+
+// Lines are matched a few at a time; each row shows its best candidate and,
+// when unsure, the others to pick from. Only rows found with confidence start
+// checked, so nothing questionable is downloaded without a look.
+const imp = { entries: [], filter: "all", seq: 0, done: [] };
+const IMPORT_PARALLEL = 3;
+const IMPORT_STATUS = { sure: "찾음", check: "확인 필요", none: "못 찾음", have: "이미 받음", wait: "찾는 중" };
+
+function importChosen(e) {
+  return e.candidates?.[e.pick ?? 0];
+}
+
+function importRow(e, i) {
+  const c = importChosen(e);
+  const status = e.result ? (e.have ? "have" : e.result.status) : "wait";
+  // Other candidates only where the pick is in doubt.
+  const options = (e.candidates || []).length > 1 && (status === "check" || e.pick)
+    ? `<select class="imp-pick" data-imp-pick="${i}" aria-label="후보">${e.candidates.map((x, j) =>
+      `<option value="${j}"${j === (e.pick ?? 0) ? " selected" : ""}>${esc(x.name)} · ${esc(x.artist || "")}${x.album ? ` · ${esc(x.album)}` : ""}</option>`).join("")}</select>`
+    : "";
+  const match = c ? `
+      <span class="song-art">${artworkImg(c)}</span>
+      <span class="imp-text"><b>${esc(c.name)}</b>${qualityBadges(c.traits)}
+        <small>${esc([c.artist, c.album, c.duration ? fmtSec(c.duration / 1000) : ""].filter(Boolean).join(" · "))}${c.local_name && c.local_name !== c.name ? ` · ${esc(c.local_name)}` : ""}</small></span>`
+    : `<span class="imp-text secondary">${status === "wait" ? "찾는 중…" : "Apple Music에서 찾지 못했어요"}</span>`;
+  return `
+    <li class="imp-row ${status}" data-imp="${i}">
+      <input type="checkbox" class="imp-check" data-imp-check="${i}"${e.checked ? " checked" : ""}${c && !e.have ? "" : " disabled"} aria-label="받기">
+      <span class="imp-status" title="${IMPORT_STATUS[status]}">${status === "wait" ? '<span class="spinner"></span>' : icon({ sure: "checkmark", check: "alert", none: "close", have: "checkmark" }[status])}</span>
+      <span class="imp-line" title="${esc(e.line)}">${esc(e.line)}</span>
+      <span class="imp-match">${match}</span>
+      <span class="imp-actions">${options}${c ? `<button class="pl-btn" data-imp-play="${i}" title="미리 듣기" aria-label="미리 듣기">${icon("play")}</button>` : ""}</span>
+    </li>`;
+}
+
+function renderImport() {
+  const visible = imp.entries.map((e, i) => [e, i]).filter(([e]) => {
+    if (imp.filter === "all") return true;
+    const status = e.result ? (e.have ? "have" : e.result.status) : "wait";
+    return status === imp.filter || (imp.filter === "sure" && status === "have");
+  });
+  $("#import-list").innerHTML = visible.map(([e, i]) => importRow(e, i)).join("")
+    || `<li class="q-empty">해당하는 줄이 없어요</li>`;
+  renderImportBar();
+}
+
+function renderImportBar() {
+  const counts = { sure: 0, check: 0, none: 0, have: 0, wait: 0 };
+  imp.entries.forEach((e) => { counts[e.result ? (e.have ? "have" : e.result.status) : "wait"] += 1; });
+  const parts = [`${imp.entries.length}줄`, `찾음 ${counts.sure}`, `확인 필요 ${counts.check}`, `못 찾음 ${counts.none}`];
+  if (counts.have) parts.push(`이미 받음 ${counts.have}`);
+  if (counts.wait) parts.push(`찾는 중 ${counts.wait}`);
+  $("#import-progress").textContent = parts.join(" · ");
+  const picked = imp.entries.filter((e) => e.checked && importChosen(e) && !e.have).length;
+  $("#import-count").textContent = `${picked}곡 선택됨`;
+  $("#import-download").disabled = !picked;
+  $("#import-bar").classList.toggle("hidden", !imp.entries.length);
+}
+
+function updateImportRow(i) {
+  const old = $(`#import-list [data-imp="${i}"]`);
+  if (old) old.outerHTML = importRow(imp.entries[i], i);
+  renderImportBar();
+}
+
+async function startImport() {
+  const text = $("#import-text").value;
+  if (!text.trim()) { $("#import-text").focus(); return; }
+  const seq = ++imp.seq;
+  const name = $("#import-name").value.trim();
+  const [parsed, have] = await Promise.all([
+    api("/api/import/parse", { method: "POST", body: { text } }),
+    name ? api(`/api/import/lists/${encodeURIComponent(name)}`).catch(() => ({ songs: [] })) : { songs: [] },
+  ]);
+  if (seq !== imp.seq) return;
+  const owned = new Set(have.songs);
+  imp.entries = parsed.entries.map((e) => ({ ...e, result: null, candidates: [], pick: 0, checked: false }));
+  imp.filter = "all";
+  $$("#import-filter button").forEach((b) => b.classList.toggle("active", b.dataset.value === "all"));
+  $("#import-results").classList.remove("hidden");
+  renderImport();
+  if (parsed.entries.length >= parsed.max) toast(`한 번에 ${parsed.max}줄까지 가져와요`, "err");
+
+  let next = 0;
+  const worker = async () => {
+    while (seq === imp.seq && next < imp.entries.length) {
+      const i = next++;
+      const e = imp.entries[i];
+      try {
+        e.result = await api("/api/import/match", { method: "POST", body: { artist: e.artist, title: e.title } });
+      } catch (err) {
+        e.result = { status: "none", candidates: [], error: err.message };
+      }
+      if (seq !== imp.seq) return;
+      e.candidates = e.result.candidates || [];
+      e.have = Boolean(importChosen(e) && owned.has(importChosen(e).id));
+      e.checked = e.result.status === "sure" && !e.have;
+      updateImportRow(i);
+    }
+  };
+  await Promise.all(Array.from({ length: IMPORT_PARALLEL }, worker));
+}
+
+async function downloadImport() {
+  const picked = imp.entries.filter((e) => e.checked && importChosen(e) && !e.have).map(importChosen);
+  if (!picked.length) return;
+  const name = $("#import-name").value.trim() || `가져온 목록 ${new Date().toLocaleDateString(i18n.locale)}`;
+  const family = $("#import-family").value;
+  store.set("lastFamily", family);
+  const btn = $("#import-download");
+  btn.disabled = true;
+  try {
+    await api("/api/jobs", {
+      method: "POST",
+      body: {
+        urls: picked.map((c) => c.url),
+        import_name: name,
+        preview: { title: name, artist: `${picked.length}곡`, artwork: picked[0].artwork || null, type: "import" },
+        overrides: { use_wrapper: wrapperReady(), ...familyOverrides(family) },
+      },
+    });
+    picked.forEach((c) => c.url && state.queued.add(c.url));
+    imp.entries.forEach((e) => { if (e.checked) { e.have = true; e.checked = false; } });
+    renderImport();
+    toast(`${picked.length}곡을 "${name}"(으)로 대기열에 추가했어요`, "ok");
+  } catch (err) {
+    toast(err.message, "err");
+  } finally {
+    renderImportBar();
+  }
+}
+
+async function loadImportNames() {
+  // Filled on first visit: the quality helpers are defined further down.
+  if (!$("#import-family").options.length) {
+    $("#import-family").innerHTML = familyOptions().map((o) => `<option value="${o.family}">${esc(o.name)}</option>`).join("");
+    $("#import-family").value = store.get("lastFamily", "alac");
+  }
+  try {
+    const { lists } = await api("/api/import/lists");
+    $("#import-names").innerHTML = lists.map((l) => `<option value="${esc(l.name)}">${l.count}곡</option>`).join("");
+  } catch { /* optional */ }
+}
+
+$("#import-start").addEventListener("click", startImport);
+$("#import-download").addEventListener("click", downloadImport);
+$("#import-text").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); startImport(); }
+});
+$("#import-file").addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  $("#import-text").value = await file.text();
+  if (!$("#import-name").value.trim()) $("#import-name").value = file.name.replace(/\.[^.]+$/, "");
+  e.target.value = "";
+});
+$("#import-input").addEventListener("dragover", (e) => { e.preventDefault(); $("#import-input").classList.add("drop"); });
+$("#import-input").addEventListener("dragleave", () => $("#import-input").classList.remove("drop"));
+$("#import-input").addEventListener("drop", async (e) => {
+  e.preventDefault();
+  $("#import-input").classList.remove("drop");
+  const file = e.dataTransfer.files?.[0];
+  if (!file) return;
+  $("#import-text").value = await file.text();
+  if (!$("#import-name").value.trim()) $("#import-name").value = file.name.replace(/\.[^.]+$/, "");
+});
+$("#import-filter").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-value]");
+  if (!b) return;
+  imp.filter = b.dataset.value;
+  $$("#import-filter button").forEach((x) => x.classList.toggle("active", x === b));
+  renderImport();
+});
+$("#import-list").addEventListener("change", (e) => {
+  const check = e.target.closest("[data-imp-check]");
+  const pick = e.target.closest("[data-imp-pick]");
+  if (check) {
+    imp.entries[Number(check.dataset.impCheck)].checked = check.checked;
+    renderImportBar();
+  } else if (pick) {
+    const i = Number(pick.dataset.impPick);
+    imp.entries[i].pick = Number(pick.value);
+    imp.entries[i].checked = true;
+    updateImportRow(i);
+  }
+});
+$("#import-list").addEventListener("click", (e) => {
+  const play = e.target.closest("[data-imp-play]");
+  if (!play) return;
+  const c = importChosen(imp.entries[Number(play.dataset.impPlay)]);
+  if (c) playQueue([c], 0, "목록 가져오기");
+});
+
 
 const wrapperReady = () => state.wrapper?.me?.auth?.state === "authenticated";
 

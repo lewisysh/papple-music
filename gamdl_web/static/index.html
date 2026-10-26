@@ -90,6 +90,9 @@
           </div>
           <div class="suggest hidden" id="suggest" role="listbox" aria-label="검색 제안"></div>
         </div>
+        <div class="composer-links">
+          <a class="btn-link" href="/import" data-nav><span data-icon="queue"></span>목록을 붙여넣어 한 번에 받기</a>
+        </div>
 
         <div class="search-head hidden" id="search-head">
           <div class="segmented" id="search-filter" role="radiogroup" aria-label="검색 종류">
@@ -120,6 +123,45 @@
       </section>
 
       <!-- Album · artist · playlist -->
+      <!-- Paste a list -->
+      <section id="tab-import" class="page">
+        <header class="page-head">
+          <h1>목록 가져오기</h1>
+          <p>"아티스트 - 제목" 목록을 붙여넣으면 Apple Music에서 같은 곡을 찾아 한 번에 받아요.</p>
+        </header>
+
+        <div class="group import-input" id="import-input">
+          <textarea id="import-text" rows="9" spellcheck="false"
+            placeholder="Darren Styles - Save Me 2022 (DS VIP)&#10;IU - Love wins all&#10;Avicii - Levels (Radio Edit)"></textarea>
+          <div class="import-row">
+            <input type="text" id="import-name" list="import-names" maxlength="80" placeholder="목록 이름 (폴더·플레이리스트 이름)">
+            <datalist id="import-names"></datalist>
+            <label class="btn btn-gray import-file">파일 열기<input type="file" id="import-file" accept=".txt,.csv,.tsv,.m3u,.m3u8,text/plain" hidden></label>
+            <button class="btn btn-primary" id="import-start">곡 찾기</button>
+          </div>
+        </div>
+        <p class="hint">한 줄에 한 곡. 앞 번호와 재생 시간은 무시하고, CSV는 아티스트·제목 열을 읽어요. 같은 목록 이름으로 다시 가져오면 이미 받은 곡은 건너뛰어요.</p>
+
+        <div id="import-results" class="hidden">
+          <div class="import-head">
+            <div class="segmented" id="import-filter" role="radiogroup" aria-label="결과 종류">
+              <button type="button" data-value="all" class="active">전체</button>
+              <button type="button" data-value="sure">찾음</button>
+              <button type="button" data-value="check">확인 필요</button>
+              <button type="button" data-value="none">못 찾음</button>
+            </div>
+            <span class="secondary" id="import-progress"></span>
+          </div>
+          <ol class="group import-list" id="import-list"></ol>
+        </div>
+
+        <div class="import-bar hidden" id="import-bar">
+          <span id="import-count"></span>
+          <select id="import-family" aria-label="음질"></select>
+          <button class="btn btn-primary" id="import-download">받기</button>
+        </div>
+      </section>
+
       <section id="tab-detail" class="page">
         <div id="detail"></div>
       </section>

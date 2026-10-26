@@ -37,7 +37,7 @@ from gamdl.interface import (
 )
 from pydantic import BaseModel, Field, ValidationError
 
-from . import __version__, docker_ctl, wrapper
+from . import __version__, docker_ctl, importer, wrapper
 from .config import DATA_DIR, JOB_OVERRIDE_FIELDS, LOG_LEVELS, MP3_BITRATES, OUTPUT_FORMATS, Settings, SettingsStore
 from . import convert
 from .convert import EXTRA_TAGS
@@ -640,6 +640,40 @@ class JobRequest(BaseModel):
     overrides: dict[str, Any] = {}
     # What the page already knows about the item, shown while the job waits.
     preview: JobPreview | None = None
+    # A pasted list: songs go to Imports/<name>/ with an M3U8.
+    import_name: str | None = Field(None, max_length=120)
+
+
+class ImportText(BaseModel):
+    text: str = Field(max_length=200_000)
+
+
+class ImportLine(BaseModel):
+    artist: str = Field("", max_length=300)
+    title: str = Field(max_length=300)
+
+
+@app.post("/api/import/parse")
+async def import_parse(body: ImportText):
+    return {"entries": importer.parse(body.text), "max": importer.MAX_LINES}
+
+
+@app.post("/api/import/match")
+async def import_match(request: Request, body: ImportLine):
+    try:
+        return await importer.match(_state(request).search, body.artist, body.title)
+    except SearchError as e:
+        raise HTTPException(502, str(e))
+
+
+@app.get("/api/import/lists")
+async def import_lists():
+    return {"lists": importer.lists()}
+
+
+@app.get("/api/import/lists/{name}")
+async def import_list(name: str):
+    return {"name": importer.safe_name(name), "songs": importer.downloaded(importer.safe_name(name))}
 
 
 @app.get("/api/jobs")
@@ -664,7 +698,13 @@ async def create_job(request: Request, body: JobRequest):
     preview = body.preview.model_dump() if body.preview and body.preview.title else None
     if preview and not (preview["artwork"] or "").startswith("https://"):
         preview["artwork"] = None
-    job = state.manager.submit(urls, overrides, preview)
+    import_name = importer.safe_name(body.import_name) if body.import_name else None
+    if import_name:
+        # One folder of loose songs: each would overwrite the same Cover.jpg.
+        overrides.update(
+            single_song_folder=True, single_song_template=f"Imports/{import_name}/{{artist}} - {{title}}", save_cover=False,
+        )
+    job = state.manager.submit(urls, overrides, preview, import_name)
     if preview is None and len(urls) == 1:
         # A pasted link: look the item up so the waiting card isn't just a URL.
         async def fill() -> None:

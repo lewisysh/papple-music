@@ -26,7 +26,7 @@ from gamdl.interface import (
     GamdlInterfaceUrlParseError,
 )
 
-from . import convert, motion
+from . import convert, importer, motion
 from . import progress
 from .config import SettingsStore
 from .events import EventBus
@@ -116,6 +116,8 @@ class Job:
     error: str | None = None
     # Title/artist/artwork to show before the job starts and gamdl reports them.
     preview: dict[str, Any] | None = None
+    # Set for a pasted list: its folder name, for the M3U8 and "already downloaded".
+    import_name: str | None = None
 
     def counts(self) -> dict[str, int]:
         counts = {"total": len(self.tracks)}
@@ -177,8 +179,11 @@ class JobManager:
 
     # ---- public API ------------------------------------------------------
 
-    def submit(self, urls: list[str], overrides: dict[str, Any], preview: dict[str, Any] | None = None) -> Job:
-        job = Job(urls=urls, overrides=overrides, preview=preview)
+    def submit(
+        self, urls: list[str], overrides: dict[str, Any], preview: dict[str, Any] | None = None,
+        import_name: str | None = None,
+    ) -> Job:
+        job = Job(urls=urls, overrides=overrides, preview=preview, import_name=import_name)
         self.jobs[job.id] = job
         self.queue.put_nowait(job.id)
         self._publish(job)
@@ -188,6 +193,15 @@ class JobManager:
         if job.preview is None and preview:
             job.preview = preview
             self._publish(job)
+
+    def _finish_import(self, job: Job, settings) -> None:
+        """Remember what a pasted list got, and write its M3U8 in list order."""
+        tracks = [t for t in job.tracks.values() if t.status in {"done", "skipped"} and t.path]
+        importer.remember(job.import_name, [t.media_id for t in tracks])
+        folder = Path(settings.output_path).expanduser() / "Imports" / job.import_name
+        playlist = importer.write_m3u(folder, job.import_name, [t.path for t in tracks])
+        if playlist:
+            logger.info(f"플레이리스트 저장: {playlist}")
 
     def cancel(self, job_id: str) -> None:
         job = self.jobs[job_id]
@@ -264,6 +278,8 @@ class JobManager:
                 self._publish(job)
                 await self._run_url(job, session, settings, url_index, url)
             job.status = "done"
+            if job.import_name:
+                self._finish_import(job, settings)
             counts = job.counts()
             logger.info(
                 f"완료 — 성공 {counts.get('done', 0)}, 건너뜀 {counts.get('skipped', 0)}, 오류 {counts.get('error', 0)}"
