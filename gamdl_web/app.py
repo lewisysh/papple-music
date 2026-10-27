@@ -37,7 +37,7 @@ from gamdl.interface import (
 )
 from pydantic import BaseModel, Field, ValidationError
 
-from . import __version__, docker_ctl, importer, wrapper
+from . import __version__, docker_ctl, importer, naming, wrapper
 from .config import DATA_DIR, DJ_KEY_NOTATIONS, JOB_OVERRIDE_FIELDS, LOG_LEVELS, MP3_BITRATES, OUTPUT_FORMATS, Settings, SettingsStore
 from . import convert
 from .convert import EXTRA_TAGS
@@ -214,6 +214,7 @@ async def meta():
         "platform": sys.platform,
         "brand": _brand_info(),
         "data_dir": str(DATA_DIR),
+        "name_variables": naming.VARIABLES,
         "options": {
             "song_codec": values(SongCodec),
             "music_video_codec": values(MusicVideoCodec),
@@ -643,6 +644,9 @@ class JobRequest(BaseModel):
     preview: JobPreview | None = None
     # A pasted list: songs go to Imports/<name>/ with an M3U8.
     import_name: str | None = Field(None, max_length=120)
+    # Each link's place in that list, so file names keep the list's numbering
+    # even when songs already downloaded are left out.
+    positions: list[int] | None = None
 
 
 class ImportText(BaseModel):
@@ -685,7 +689,13 @@ async def list_jobs(request: Request):
 @app.post("/api/jobs")
 async def create_job(request: Request, body: JobRequest):
     state = _state(request)
-    urls = list(dict.fromkeys(u.strip() for u in body.urls if u.strip()))
+    # Unique links in order; a pasted list's positions follow its links.
+    given = body.positions if body.positions and len(body.positions) == len(body.urls) else [None] * len(body.urls)
+    unique: dict[str, int | None] = {}
+    for u, pos in zip(body.urls, given):
+        if u.strip():
+            unique.setdefault(u.strip(), pos)
+    urls = list(unique)
     if not urls:
         raise HTTPException(400, "URL을 입력하세요")
     invalid = [u for u in urls if not AppleMusicInterface.get_url_info(u)]
@@ -703,9 +713,12 @@ async def create_job(request: Request, body: JobRequest):
     if import_name:
         # One folder of loose songs: each would overwrite the same Cover.jpg.
         overrides.update(
-            single_song_folder=True, single_song_template=f"Imports/{import_name}/{{artist}} - {{title}}", save_cover=False,
+            single_song_folder=True,
+            single_song_template=f"Imports/{import_name}/{state.store.get().playlist_track_template}",
+            save_cover=False,
         )
-    job = state.manager.submit(urls, overrides, preview, import_name)
+    positions = list(unique.values()) if import_name and all(unique.values()) else None
+    job = state.manager.submit(urls, overrides, preview, import_name, positions)
     if preview is None and len(urls) == 1:
         # A pasted link: look the item up so the waiting card isn't just a URL.
         async def fill() -> None:

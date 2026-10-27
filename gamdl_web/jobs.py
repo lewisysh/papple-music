@@ -123,6 +123,8 @@ class Job:
     preview: dict[str, Any] | None = None
     # Set for a pasted list: its folder name, for the M3U8 and "already downloaded".
     import_name: str | None = None
+    # Each link's place in the pasted list (1-based), for %position%.
+    positions: list[int] | None = None
 
     def counts(self) -> dict[str, int]:
         counts = {"total": len(self.tracks)}
@@ -188,9 +190,11 @@ class JobManager:
 
     def submit(
         self, urls: list[str], overrides: dict[str, Any], preview: dict[str, Any] | None = None,
-        import_name: str | None = None,
+        import_name: str | None = None, positions: list[int] | None = None,
     ) -> Job:
-        job = Job(urls=urls, overrides=overrides, preview=preview, import_name=import_name)
+        if positions is not None and len(positions) != len(urls):
+            positions = None
+        job = Job(urls=urls, overrides=overrides, preview=preview, import_name=import_name, positions=positions)
         self.jobs[job.id] = job
         self.queue.put_nowait(job.id)
         self._publish(job)
@@ -232,7 +236,7 @@ class JobManager:
 
     def retry(self, job_id: str) -> Job:
         job = self.jobs[job_id]
-        return self.submit(job.urls, job.overrides)
+        return self.submit(job.urls, job.overrides, job.preview, job.import_name, job.positions)
 
     def append_log(self, job_id: str, entry: dict[str, Any]) -> None:
         job = self.jobs.get(job_id)
@@ -323,6 +327,11 @@ class JobManager:
         downloader = session.downloader
         # A link to one song (…/song/… or an album link with ?i=) goes to the Songs folder.
         downloader.base.single_song_mode = bool(SINGLE_SONG_URL_RE.search(url))
+        if job.positions:
+            downloader.base.list_position = job.positions[url_index - 1]
+            downloader.base.list_total = max(job.positions)
+        else:
+            downloader.base.list_position, downloader.base.list_total = url_index, len(job.urls)
         motion_done: set[str] = set()
         try:
             async for item in downloader.get_download_item_from_url(url):

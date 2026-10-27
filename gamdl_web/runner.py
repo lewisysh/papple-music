@@ -32,7 +32,7 @@ from gamdl.interface import (
     UploadedVideoQuality,
 )
 
-from . import progress
+from . import naming, progress
 from .config import Settings
 from .prompts import WebPrompts
 
@@ -142,28 +142,60 @@ class WebBaseDownloader(AppleMusicBaseDownloader):
         self.single_song_template = single_song_template
         # Set by the job while it downloads a link to one song.
         self.single_song_mode = False
+        # A song's place in a pasted list, for %position%; set by the job per link.
+        self.list_position: int | None = None
+        self.list_total: int | None = None
+        # The item being named, so %isrc%, %label% and %upc% can be read from it.
+        self.current_media = None
         # Playback cache files need no tags; StreamService turns this on.
         self.skip_tags = False
 
     def get_final_path(self, tags, file_extension, playlist_tags):
         if self.playlist_track_template and playlist_tags and playlist_tags.title:
-            template = self.playlist_track_template
+            override = self.playlist_track_template
         elif self.single_song_mode and self.single_song_template and file_extension == ".m4a":
-            template = self.single_song_template
+            override = self.single_song_template
         else:
+            override = None
+
+        templates = {attr: getattr(self, attr) for attr in self._TEMPLATE_ATTRS}
+        if override is not None:
+            # Point every template at the chosen one for this call.
+            folder, _, file = override.rpartition("/")
+            chosen = {attr: folder if attr.endswith("folder_template") else file for attr in templates}
+        else:
+            chosen = dict(templates)
+        if any("%" in t for t in chosen.values()):
+            values = naming.context(
+                tags, playlist_tags, self.current_media, self.list_position, self.list_total
+            )
+            chosen = {attr: naming.expand(t, values) for attr, t in chosen.items()}
+        if chosen == templates:
             return super().get_final_path(tags, file_extension, playlist_tags)
 
-        # Reuse gamdl's formatting by pointing every template at the chosen one
-        # for this call; nothing awaits in between, so no other item sees it.
-        folder, _, file = template.rpartition("/")
-        saved = {attr: getattr(self, attr) for attr in self._TEMPLATE_ATTRS}
-        for attr in self._TEMPLATE_ATTRS:
-            setattr(self, attr, folder if attr.endswith("folder_template") else file)
+        # Reuse gamdl's formatting and cleanup with the filled-in templates;
+        # nothing awaits in between, so no other item sees them.
+        for attr, value in chosen.items():
+            setattr(self, attr, value)
         try:
             return super().get_final_path(tags, file_extension, playlist_tags)
         finally:
-            for attr, value in saved.items():
+            for attr, value in templates.items():
                 setattr(self, attr, value)
+
+    def get_playlist_file_path(self, tags):
+        saved = self.playlist_folder_template, self.playlist_file_template
+        if "%" in saved[0] + saved[1]:
+            values = {
+                "playlist": tags.title or "", "playlistartist": tags.artist or "",
+                "playlist_id": str(tags.playlist_id or ""),
+            }
+            self.playlist_folder_template = naming.expand(saved[0], values)
+            self.playlist_file_template = naming.expand(saved[1], values)
+        try:
+            return super().get_playlist_file_path(tags)
+        finally:
+            self.playlist_folder_template, self.playlist_file_template = saved
 
     async def download_stream(self, stream_url: str, download_path: str):
         if self.skip_tags and not stream_url.split("?")[0].endswith(".m3u8"):
@@ -193,6 +225,15 @@ class WebBaseDownloader(AppleMusicBaseDownloader):
 
 
 class WebSongDownloader(AppleMusicSongDownloader):
+    async def get_download_item(self, media):
+        # get_final_path runs before the first await in here, so this can't
+        # leak into another song's name.
+        self.base.current_media = media
+        try:
+            return await super().get_download_item(media)
+        finally:
+            self.base.current_media = None
+
     async def stage(self, *args, **kwargs):
         progress.report("decrypt")
         return await super().stage(*args, **kwargs)
@@ -327,7 +368,9 @@ async def create_session(settings: Settings, prompts: WebPrompts) -> Session:
 
     base_downloader = WebBaseDownloader(
         playlist_track_template=(
-            settings.playlist_track_template if settings.use_playlist_track_path else None
+            f"{settings.playlist_track_folder_template}/{settings.playlist_track_template}"
+            if settings.use_playlist_track_path
+            else None
         ),
         single_song_template=settings.single_song_template if settings.single_song_folder else None,
         interface=interface,

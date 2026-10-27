@@ -21,6 +21,8 @@ from gamdl.interface import (
 )
 from pydantic import BaseModel, Field, field_validator
 
+from . import naming
+
 # Uncommon on purpose: 8765, the old default, is taken by apps such as AnkiConnect.
 DEFAULT_PORT = 18765
 
@@ -136,23 +138,25 @@ class Settings(BaseModel):
     wvd_path: str = ""
     prd_path: str = ""
 
-    # Templates
+    # Templates, written with %variables% (naming.py); gamdl's {fields} work too.
     # Albums, playlists and single songs each get their own top-level folder.
-    album_folder_template: str = "Albums/{album_artist}/{album}"
-    compilation_folder_template: str = "Albums/Compilations/{album}"
-    no_album_folder_template: str = _downloader_defaults["no_album_folder_template"]
-    playlist_folder_template: str = _downloader_defaults["playlist_folder_template"]
-    single_disc_file_template: str = _downloader_defaults["single_disc_file_template"]
-    multi_disc_file_template: str = _downloader_defaults["multi_disc_file_template"]
-    no_album_file_template: str = _downloader_defaults["no_album_file_template"]
-    playlist_file_template: str = _downloader_defaults["playlist_file_template"]
+    album_folder_template: str = "Albums/%albumartist%/%album%"
+    compilation_folder_template: str = "Albums/Compilations/%album%"
+    no_album_folder_template: str = naming.from_legacy(_downloader_defaults["no_album_folder_template"])
+    playlist_folder_template: str = naming.from_legacy(_downloader_defaults["playlist_folder_template"])
+    single_disc_file_template: str = "%tracknumber% - %title%"
+    multi_disc_file_template: str = "%discnumber%-%tracknumber% - %title%"
+    no_album_file_template: str = naming.from_legacy(_downloader_defaults["no_album_file_template"])
+    playlist_file_template: str = naming.from_legacy(_downloader_defaults["playlist_file_template"])
     date_tag_template: str = _downloader_defaults["date_tag_template"]
     # Songs downloaded from a playlist URL go under this path instead of the
-    # album templates (gamdl itself always files them by album).
+    # album templates (gamdl itself always files them by album). The file name
+    # also names the songs of a pasted list.
     use_playlist_track_path: bool = True
-    playlist_track_template: str = "Playlists/{playlist_title}/{playlist_track:02d} {title}"
+    playlist_track_folder_template: str = "Playlists/%playlist%"
+    playlist_track_template: str = "%position% - %artist% - %title%"
     single_song_folder: bool = True
-    single_song_template: str = "Songs/{artist} - {title}"
+    single_song_template: str = "Songs/%artist% - %title%"
     # Key/BPM tags for DJ software (see dj.py for where they come from).
     dj_tags: bool = False
     dj_key_notation: str = "camelot"
@@ -243,6 +247,34 @@ JOB_OVERRIDE_FIELDS = {
 }
 
 
+PATH_TEMPLATE_FIELDS = (
+    "album_folder_template",
+    "compilation_folder_template",
+    "no_album_folder_template",
+    "playlist_folder_template",
+    "single_disc_file_template",
+    "multi_disc_file_template",
+    "no_album_file_template",
+    "playlist_file_template",
+    "playlist_track_folder_template",
+    "playlist_track_template",
+    "single_song_template",
+)
+
+
+def _migrate(known: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    """Settings saved before 1.3: playlist tracks had one path for folder and
+    file, and templates used {fields}. Rewrite them with %variables% when every
+    field has one, so Settings shows a single style."""
+    track = known.get("playlist_track_template")
+    if "playlist_track_folder_template" not in data and track and "/" in track:
+        known["playlist_track_folder_template"], _, known["playlist_track_template"] = track.rpartition("/")
+    for key in PATH_TEMPLATE_FIELDS:
+        if isinstance(known.get(key), str):
+            known[key] = naming.from_legacy(known[key])
+    return known
+
+
 class SettingsStore:
     def __init__(self, path: Path = SETTINGS_PATH):
         self.path = path
@@ -255,7 +287,7 @@ class SettingsStore:
             data = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return Settings()
-        known = {k: v for k, v in data.items() if k in Settings.model_fields}
+        known = _migrate({k: v for k, v in data.items() if k in Settings.model_fields}, data)
         try:
             return Settings.model_validate(known)
         except ValueError:

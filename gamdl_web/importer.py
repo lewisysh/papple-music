@@ -316,8 +316,8 @@ def remember(name: str, song_ids: list[str]) -> None:
 
 def safe_name(name: str) -> str:
     """A list name usable as a folder name."""
-    # Braces too: the name ends up inside a gamdl path template.
-    name = re.sub(r'[\\/:*?"<>|{}\x00-\x1f]', " ", name or "").strip(" .")
+    # Braces and % too: the name ends up inside a path template.
+    name = re.sub(r'[\\/:*?"<>|{}%\x00-\x1f]', " ", name or "").strip(" .")
     return re.sub(r"\s+", " ", name)[:80] or "Imported"
 
 

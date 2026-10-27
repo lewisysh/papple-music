@@ -656,7 +656,8 @@ async function startImport() {
 }
 
 async function downloadImport() {
-  const picked = imp.entries.filter((e) => e.checked && importChosen(e) && !e.have).map(importChosen);
+  const rows = imp.entries.map((e, i) => ({ e, position: i + 1 })).filter(({ e }) => e.checked && importChosen(e) && !e.have);
+  const picked = rows.map(({ e }) => importChosen(e));
   if (!picked.length) return;
   const name = $("#import-name").value.trim() || `가져온 목록 ${new Date().toLocaleDateString(i18n.locale)}`;
   const family = $("#import-family").value;
@@ -668,6 +669,8 @@ async function downloadImport() {
       method: "POST",
       body: {
         urls: picked.map((c) => c.url),
+        // The list's own numbering, for %position% in the file names.
+        positions: rows.map((r) => r.position),
         import_name: name,
         preview: { title: name, artist: `${picked.length}곡`, artwork: picked[0].artwork || null, type: "import" },
         overrides: {
@@ -3609,10 +3612,43 @@ $("#btn-docker-logs-refresh").addEventListener("click", refreshDockerLogs);
 
 // ---------------------------------------------------------------- settings
 
-const TEMPLATE_HELP = "변수: {album} {album_artist} {artist} {title} {track:02d} {disc} {date:%Y} {composer} {media_type} · '/'로 하위 폴더를 만듭니다.";
+const TEMPLATE_HELP = "아래 %변수%를 누르면 커서 자리에 들어가요. '/'로 하위 폴더를 만들고, 비어 있는 변수는 앞의 구분 기호와 함께 빠져요.";
 const DJ_HELP = "Apple Music에는 키·BPM이 없어서 ① 기존 파일 ② GetSongBPM ③ Deezer(BPM만) 순서로 찾아 넣어요. 어디에도 없으면 추측하지 않고 비워둬요. rekordbox·Serato에서는 AIFF 저장을 추천해요.";
-const SINGLE_SONG_HELP = "곡 하나의 링크로 받을 때만 적용됩니다. 앨범·플레이리스트로 받으면 각자의 폴더에 저장됩니다. 변수: {artist} {title} {album} {album_artist} {date:%Y}";
-const PLAYLIST_HELP = "플레이리스트 링크로 받을 때만 적용됩니다. 변수: {playlist_title} {playlist_artist} {playlist_track:02d} {artist} {title} {album}";
+const SINGLE_SONG_HELP = "곡 하나의 링크로 받을 때만 적용됩니다. 앨범·플레이리스트로 받으면 각자의 폴더에 저장됩니다.";
+const PLAYLIST_HELP = "플레이리스트 링크로 받을 때 적용됩니다. 트랙 템플릿은 붙여넣은 목록(가져오기)의 파일 이름에도 쓰여요.";
+
+// Which %variables% each template can use (descriptions come from /api/meta).
+const PLAYLIST_ONLY_VARS = ["playlist", "playlistartist", "playlist_id", "position"];
+const TEMPLATE_VARS = {
+  album: (all) => all.filter((v) => !PLAYLIST_ONLY_VARS.includes(v)),
+  playlist: (all) => all,
+  m3u: () => ["playlist", "playlistartist", "playlist_id"],
+};
+// Sample song for the "예:" line under each template.
+const TEMPLATE_SAMPLE = {
+  title: "LOVE DIVE", artist: "IVE", artists: "IVE", allartists: "IVE", mainartists: "IVE", featartists: "",
+  album: "LOVE DIVE", albumartist: "IVE", composer: "Ryan S. Jhun", tracknumber: "01", tracktotal: "2",
+  discnumber: "1", disctotal: "1", genre: "K-Pop", year: "2022", date: "2022-04-05", label: "Starship Entertainment",
+  isrc: "KRA302200123", upc: "8804775250491", explicit: "", track_id: "1615584008", album_id: "1615584000",
+  artist_id: "1586823063", playlist: "DJ Set", playlistartist: "Papple", playlist_id: "pl.u-abc", position: "01",
+};
+const FORMAT_EXT = { flac: ".flac", wav: ".wav", aiff: ".aiff", mp3: ".mp3" };
+
+function expandTemplate(template, values) {
+  const re = /%([a-z_]+)%/gi;
+  return template.split("/").map((part) => {
+    if (!part.match(re)) return part;
+    const filled = part.replace(re, (m, name) => (name.toLowerCase() in values ? values[name.toLowerCase()].replace(/[\\/]/g, "_") || "\0" : m));
+    return filled.replace(/\s*[(\[]\0[)\]]/g, "").replace(/^\0\s*[-–_,.]?\s*/, "").replace(/\s*[-–_,.]?\s*\0/g, "")
+      .replace(/\s{2,}/g, " ").trim() || "_";
+  }).join("/");
+}
+
+function templatePreview(f, value) {
+  const path = expandTemplate(value || "", TEMPLATE_SAMPLE);
+  if (f.folder) return `${path}/`;
+  return path + (f.vars === "m3u" ? ".m3u8" : FORMAT_EXT[state.settings.output_format] || ".m4a");
+}
 
 const TAG_LABELS = {
   cover: "커버", title: "제목", artist: "아티스트", album: "앨범", album_artist: "앨범 아티스트",
@@ -3683,22 +3719,23 @@ const SETTINGS_SCHEMA = [
   ] },
   { title: "한 곡 다운로드", help: SINGLE_SONG_HELP, fields: [
     { key: "single_song_folder", label: "한 곡은 Songs 폴더에 따로 저장", type: "bool" },
-    { key: "single_song_template", label: "한 곡 경로", type: "text", wide: true },
+    { key: "single_song_template", label: "한 곡 경로", type: "template", vars: "album" },
   ] },
   { title: "플레이리스트", help: PLAYLIST_HELP, fields: [
     { key: "use_playlist_track_path", label: "플레이리스트 폴더에 따로 저장", type: "bool" },
-    { key: "playlist_track_template", label: "플레이리스트 곡 경로", type: "text", wide: true },
+    { key: "playlist_track_folder_template", label: "재생목록 폴더", type: "template", vars: "playlist", folder: true },
+    { key: "playlist_track_template", label: "재생목록 트랙 템플릿", type: "template", vars: "playlist" },
     { key: "save_playlist", label: "M3U8 파일 만들기", type: "bool" },
-    { key: "playlist_folder_template", label: "M3U8 폴더", type: "text", wide: true },
-    { key: "playlist_file_template", label: "M3U8 파일 이름", type: "text", wide: true },
+    { key: "playlist_folder_template", label: "M3U8 폴더", type: "template", vars: "m3u", folder: true },
+    { key: "playlist_file_template", label: "M3U8 파일 이름", type: "template", vars: "m3u" },
   ] },
   { title: "파일 이름", help: TEMPLATE_HELP, fields: [
-    { key: "album_folder_template", label: "앨범 폴더", type: "text", wide: true },
-    { key: "compilation_folder_template", label: "컴필레이션 폴더", type: "text", wide: true },
-    { key: "single_disc_file_template", label: "파일 (디스크 1장)", type: "text", wide: true },
-    { key: "multi_disc_file_template", label: "파일 (디스크 여러 장)", type: "text", wide: true },
-    { key: "no_album_folder_template", label: "앨범 없는 항목 폴더", type: "text", wide: true },
-    { key: "no_album_file_template", label: "앨범 없는 항목 파일", type: "text", wide: true },
+    { key: "album_folder_template", label: "앨범 폴더", type: "template", vars: "album", folder: true },
+    { key: "single_disc_file_template", label: "앨범 트랙 템플릿", type: "template", vars: "album" },
+    { key: "multi_disc_file_template", label: "앨범 트랙 템플릿 (디스크 여러 장)", type: "template", vars: "album" },
+    { key: "compilation_folder_template", label: "컴필레이션 폴더", type: "template", vars: "album", folder: true },
+    { key: "no_album_folder_template", label: "앨범 없는 항목 폴더", type: "template", vars: "album", folder: true },
+    { key: "no_album_file_template", label: "앨범 없는 항목 파일", type: "template", vars: "album" },
     { key: "date_tag_template", label: "날짜 태그 형식", type: "text" },
     { key: "truncate", label: "파일 이름 최대 길이", type: "number", nullable: true, help: "비우면 제한 없음" },
   ] },
@@ -3761,6 +3798,18 @@ function renderField(f, s) {
           <label class="switch-label"><input type="checkbox" class="switch" data-embed-all ${excluded.has("all") ? "checked" : ""}><span>태그를 전혀 넣지 않음</span></label>
         </div>`;
     }
+    case "template": {
+      const all = Object.keys(state.meta.name_variables || {});
+      const chips = TEMPLATE_VARS[f.vars](all).map((v) =>
+        `<button type="button" class="chip tpl-var" data-var="%${v}%" title="${esc(state.meta.name_variables[v])}">%${v}%</button>`).join("");
+      // Not a <label>: the chips are buttons.
+      return `
+        <div class="row stack tpl" data-tpl="${f.key}">${label}
+          <input type="text" id="${id}" data-key="${f.key}" value="${esc(s[f.key] ?? "")}" spellcheck="false" autocomplete="off">
+          <div class="tpl-preview"><span>예시</span><code class="q-text">${esc(templatePreview(f, s[f.key]))}</code></div>
+          <details class="tpl-vars"><summary>사용 가능한 변수</summary><div class="chips">${chips}</div></details>
+        </div>`;
+    }
     default: {
       const input = `<input type="${f.type}" id="${id}" data-key="${f.key}" ${f.nullable ? 'data-nullable="1" placeholder="없음"' : ""} value="${esc(s[f.key] ?? "")}" spellcheck="false">`;
       return `<label class="row${f.wide ? " stack" : ""}">${label}${input}</label>`;
@@ -3808,7 +3857,27 @@ function updateSavebar() {
 
 $("#settings-form").addEventListener("input", markDirty);
 $("#settings-form").addEventListener("submit", (e) => e.preventDefault());
+$("#settings-form").addEventListener("input", (e) => {
+  const row = e.target.closest("[data-tpl]");
+  if (!row) return;
+  const f = SETTINGS_SCHEMA.flatMap((sec) => sec.fields).find((x) => x.key === row.dataset.tpl);
+  $(".tpl-preview code", row).textContent = templatePreview(f, e.target.value);
+});
+// Keep the caret while a chip takes focus, so the variable goes where it was.
+$("#settings-form").addEventListener("pointerdown", (e) => {
+  if (e.target.closest(".tpl-var")) e.preventDefault();
+});
 $("#settings-form").addEventListener("click", (e) => {
+  const chip = e.target.closest(".tpl-var");
+  if (chip) {
+    const input = $("input", chip.closest("[data-tpl]"));
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? input.value.length;
+    input.setRangeText(chip.dataset.var, start, end, "end");
+    input.focus();
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    return;
+  }
   const btn = e.target.closest("[data-embed-set]");
   if (!btn) return;
   $$(".tag-grid input", btn.closest("[data-type=embed]")).forEach((i) => (i.checked = btn.dataset.embedSet === "1"));
