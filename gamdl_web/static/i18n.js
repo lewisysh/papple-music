@@ -665,6 +665,9 @@ const I18N_EN = {
 "Safari와 Mac 앱에서 한글 검색어 입력 후 Enter가 바로 검색돼요": "Korean input now searches with one Enter in Safari and the Mac app",
 // DJ key/BPM
 "DJ용 키·BPM 태그: 기존 파일, GetSongBPM, Deezer에서 가져와 캠블롯·음악 표기·오픈 키로 넣어요": "Key and BPM tags for DJs, from your own files, GetSongBPM and Deezer, in Camelot, musical or Open Key notation",
+"파일이 사라졌거나 다운로드가 실패하면 다운로드 버튼이 다시 나타나요": "The download button comes back when a file is gone or a download fails",
+"기기 등록 한도처럼 Apple이 거부한 이유를 알기 쉽게 보여줘요": "Shows why Apple refused a song, such as the account's device limit",
+"플레이리스트를 받으면 커버도 Cover.jpg로 저장돼요": "Playlist downloads also save the playlist cover as Cover.jpg",
 "파일 이름을 %변수%로 직접 정해요. 설정에서 변수를 눌러 넣고 예시 이름을 바로 확인할 수 있어요": "Choose file names with %variables%: click one in Settings and see an example name right away",
 "플레이리스트와 가져온 목록은 \"01 - 아티스트 - 제목\"으로 저장돼요": "Playlists and imported lists save as \"01 - Artist - Title\"",
 "다운로드 진행에 처음부터 전체 곡 수가 보여요": "Download progress shows the full song count from the start",
