@@ -17,6 +17,9 @@ _EXTRA_PATHS = [
 ]
 _CONTAINER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 ACTIONS = {"start", "stop", "restart"}
+# Apple's sign-in inside the wrapper: accounts, cookies and tokens. The files next
+# to this folder identify the device and stay.
+SESSION_DIR = "/app/rootfs/data/data/com.apple.android.music/files/mpl_db"
 
 
 def find_docker() -> str | None:
@@ -85,6 +88,12 @@ async def action(container: str, name: str) -> tuple[bool, str]:
     if name not in ACTIONS:
         raise ValueError(f"지원하지 않는 동작: {name}")
     code, out = await _run(name, container, timeout=90)
+    return code == 0, out.strip()
+
+
+async def clear_session(container: str) -> tuple[bool, str]:
+    _check_name(container)
+    code, out = await _run("exec", container, "sh", "-c", f'rm -f "{SESSION_DIR}"/*')
     return code == 0, out.strip()
 
 

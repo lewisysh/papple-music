@@ -6,7 +6,10 @@ from typing import Any
 import httpx
 from gamdl.api.wrapper import TARGET_WRAPPER_API_VERSION
 
+from . import docker_ctl
 from .config import Settings
+
+LOGOUT_WAIT_SECS = 45
 
 # Never forward Apple session tokens to the browser.
 SAFE_AUTH_KEYS = {"state", "apple_id", "username", "storefront", "logged_in_at", "error", "error_code"}
@@ -112,10 +115,39 @@ async def login_2fa(settings: Settings, code: str) -> tuple[int, Any]:
     return status, _scrub(body)
 
 
+async def _settled_state(settings: Settings) -> str | None:
+    """The sign-in state once a restarted wrapper has finished starting up."""
+    async with httpx.AsyncClient(timeout=httpx.Timeout(5, connect=3)) as client:
+        for _ in range(LOGOUT_WAIT_SECS):
+            try:
+                response = await client.get(f"{settings.wrapper_url}/me")
+                state = (_body(response).get("auth") or {}).get("state") if response.is_success else None
+            except (httpx.HTTPError, AttributeError):
+                state = None
+            if state and state != "in_progress":
+                return state
+            await asyncio.sleep(1)
+    return None
+
+
 async def logout(settings: Settings) -> tuple[int, Any]:
+    """Sign out for good. DELETE /login only clears the wrapper's memory: Apple's
+    session files stay, and the next /me signs straight back in from them. So the
+    files go first, then the memory, and a restart drops what the Apple libraries
+    still hold."""
+    container = settings.wrapper_container
+    ok, detail = await docker_ctl.clear_session(container)
+    if not ok:
+        return 502, {"error": f"wrapper 로그인 파일을 지우지 못했습니다: {detail[-200:]}"}
     async with httpx.AsyncClient(timeout=httpx.Timeout(30, connect=5)) as client:
         try:
-            response = await client.delete(f"{settings.wrapper_url}/login")
+            await client.delete(f"{settings.wrapper_url}/login")
         except httpx.HTTPError as e:
             return 502, {"error": f"wrapper에 연결할 수 없습니다: {type(e).__name__}"}
-    return response.status_code, _scrub(_body(response))
+    ok, detail = await docker_ctl.action(container, "restart")
+    if not ok:
+        return 502, {"error": f"wrapper를 재시작하지 못했습니다: {detail[-200:]}"}
+    state = await _settled_state(settings)
+    if state != "logged_out":
+        return 502, {"error": f"로그아웃을 확인하지 못했습니다 (상태: {state or '응답 없음'})"}
+    return 200, {"state": state}

@@ -18,7 +18,7 @@ async function api(path, { method = "GET", body, form, signal } = {}) {
   const res = await fetch(path, opts);
   let data = null;
   try { data = await res.json(); } catch { /* empty body */ }
-  if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`);
+  if (!res.ok) throw new Error(data?.detail || data?.body?.error || `HTTP ${res.status}`);
   return data;
 }
 
@@ -3404,6 +3404,10 @@ async function wrapper2fa(e) {
 
 async function wrapperLogout() {
   state.awaiting2fa = false;
+  // The wrapper restarts to sign out, which can take half a minute.
+  const btn = $("#btn-wrapper-logout");
+  btn.disabled = true;
+  btn.textContent = "로그아웃 중…";
   try { await api("/api/wrapper/logout", { method: "POST" }); } catch (err) { toast(err.message, "err"); }
   state.loginKey = null;
   await refreshWrapper();
