@@ -18,10 +18,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/lewisysh/papple-music/releases/download/v1.1.0/Papple-Music-1.1.0-arm64.dmg"><img alt="Download for macOS" src="https://img.shields.io/badge/Download%20for%20macOS-v1.1.0%20%C2%B7%20Apple%20Silicon-fa2d48?style=for-the-badge"></a>
+  <a href="https://github.com/lewisysh/papple-music/releases/download/v1.3.0/Papple-Music-1.3.0-arm64.dmg"><img alt="Download for macOS" src="https://img.shields.io/badge/Download%20for%20macOS-v1.3.0%20%C2%B7%20Apple%20Silicon-fa2d48?style=for-the-badge"></a>
 </p>
 
-<h3 align="center"><a href="https://github.com/lewisysh/papple-music/releases/download/v1.1.0/Papple-Music-1.1.0-arm64.dmg">Papple-Music-1.1.0-arm64.dmg</a></h3>
+<h3 align="center"><a href="https://github.com/lewisysh/papple-music/releases/download/v1.3.0/Papple-Music-1.3.0-arm64.dmg">Papple-Music-1.3.0-arm64.dmg</a></h3>
 
 <p align="center">
   <b>Apple Silicon · macOS 12 or later</b> · <a href="#mac-app-easiest">install guide</a> · <a href="https://github.com/lewisysh/papple-music/releases">all releases</a>
@@ -42,7 +42,7 @@ Papple Music is a self-hosted web app that puts a polished, Apple Music–like i
 
 No terminal needed — Python, all libraries and ffmpeg are inside the app.
 
-1. Download **[Papple-Music-1.1.0-arm64.dmg](https://github.com/lewisysh/papple-music/releases/download/v1.1.0/Papple-Music-1.1.0-arm64.dmg)** (Apple Silicon Macs, macOS 12 or later). Older and newer versions are on the [**Releases**](https://github.com/lewisysh/papple-music/releases) page.
+1. Download **[Papple-Music-1.3.0-arm64.dmg](https://github.com/lewisysh/papple-music/releases/download/v1.3.0/Papple-Music-1.3.0-arm64.dmg)** (Apple Silicon Macs, macOS 12 or later). Older and newer versions are on the [**Releases**](https://github.com/lewisysh/papple-music/releases) page.
 2. Open it and drag **Papple Music** into **Applications**.
 3. Open **Papple Music**. It opens in its own window and sits in the Dock like any other app.
 
@@ -263,7 +263,7 @@ Everything important in gamdl can be changed on the Settings page. The file is `
 | --- | --- |
 | Output format | Original (m4a) · FLAC · WAV · MP3 (choose the bitrate); keep the original after converting |
 | Codec priority | The order used when you don't pick a quality (e.g. ALAC → AAC) |
-| Folder / file names | gamdl templates such as `Albums/{album_artist}/{album}/{track:02d} {title}` |
+| Folder / file names | Templates with `%variables%` such as `%position% - %artist% - %title%`; click a variable in Settings to insert it |
 | Playlist path | Where songs downloaded from a playlist go (default `Playlists/…`) |
 | Single song path | Where a song downloaded on its own goes (default `Songs/{artist} - {title}`), so one track doesn't get a one-song album folder |
 | Cover | Format (jpg · png · raw), size (up to 10000), save as a file |
