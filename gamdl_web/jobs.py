@@ -26,7 +26,7 @@ from gamdl.interface import (
     GamdlInterfaceUrlParseError,
 )
 
-from . import convert, dj, importer, motion
+from . import convert, dj, importer, motion, wrapper
 from . import progress
 from .config import SettingsStore
 from .events import EventBus
@@ -71,6 +71,7 @@ COLLECTION_TYPES = {
     "artists",
 }
 FINISHED = {"done", "error", "cancelled"}
+PLAYLIST_COVER_MAX = 3000
 
 
 SINGLE_SONG_URL_RE = re.compile(r"/song/|[?&]i=\d")
@@ -165,6 +166,7 @@ class JobManager:
         self.bus = bus
         self.broker = broker
         self.jobs: dict[str, Job] = {}
+        self._files: dict[str, list[str]] = {}
         self.queue: asyncio.Queue[str] = asyncio.Queue()
         self._worker: asyncio.Task | None = None
         self._running: tuple[str, asyncio.Task] | None = None
@@ -208,7 +210,7 @@ class JobManager:
     def _finish_import(self, job: Job, settings) -> None:
         """Remember what a pasted list got, and write its M3U8 in list order."""
         tracks = [t for t in job.tracks.values() if t.status in {"done", "skipped"} and t.path]
-        importer.remember(job.import_name, [t.media_id for t in tracks])
+        importer.remember(job.import_name, {t.media_id: t.path for t in tracks})
         folder = Path(settings.output_path).expanduser() / "Imports" / job.import_name
         playlist = importer.write_m3u(folder, job.import_name, [t.path for t in tracks])
         if playlist:
@@ -233,6 +235,22 @@ class JobManager:
     def clear_finished(self) -> None:
         for job_id in [j.id for j in self.jobs.values() if j.status in FINISHED]:
             self.remove(job_id)
+
+    def saved(self, urls: list[str]) -> dict[str, bool]:
+        """Whether each link's download is going or still on disk, so the page can
+        offer it again once its files are gone."""
+        active = {u for job in self.jobs.values() if job.status not in FINISHED for u in job.urls}
+        return {
+            u: u in active or (bool(self._files.get(u)) and all(os.path.exists(p) for p in self._files[u]))
+            for u in urls
+        }
+
+    def _remember_files(self, job: Job) -> None:
+        """What each link saved. Empty when any of its songs didn't make it."""
+        for index, url in enumerate(job.urls, 1):
+            tracks = [t for t in job.tracks.values() if t.key.startswith(f"{index}:")]
+            complete = all(t.status in {"done", "skipped"} and t.path for t in tracks)
+            self._files[url] = [t.path for t in tracks] if complete else []
 
     def retry(self, job_id: str) -> Job:
         job = self.jobs[job_id]
@@ -312,6 +330,7 @@ class JobManager:
             logger.error(job.error, exception=traceback.format_exc())
         finally:
             job.finished_at = time.time()
+            self._remember_files(job)
             self.broker.cancel_job(job.id)
             ctx = self._dj.pop(job.id, None)
             if ctx:
@@ -333,6 +352,7 @@ class JobManager:
         else:
             downloader.base.list_position, downloader.base.list_total = url_index, len(job.urls)
         motion_done: set[str] = set()
+        cover_done: set[str] = set()
         try:
             async for item in downloader.get_download_item_from_url(url):
                 media = item.media
@@ -358,6 +378,9 @@ class JobManager:
                     if not media.partial:
                         track.status = "downloading"
                     self._publish(job)
+
+                if not media.partial and not media.error:
+                    await self._save_playlist_cover(item, downloader, settings, log, cover_done)
 
                 converting = (
                     track is not None
@@ -394,15 +417,16 @@ class JobManager:
                             track.path = item.final_path
                             track.quality = await convert.audio_quality(item.final_path, settings.ffmpeg_path)
                 except Exception as e:
+                    message = await wrapper.explain_error(settings, str(e) or type(e).__name__)
                     log.error(
-                        f'오류 "{track.title if track else media.media_id}": {e}',
+                        f'오류 "{track.title if track else media.media_id}": {message}',
                         exception=traceback.format_exc(),
                     )
                     if track:
                         track.status = "error"
-                        track.message = str(e) or type(e).__name__
+                        track.message = message
                     else:
-                        job.error = str(e)
+                        job.error = message
                 else:
                     if track and not media.partial:
                         track.path = item.final_path
@@ -466,6 +490,33 @@ class JobManager:
             )
         except Exception as e:
             log.warning(f"추가 태그(레이블·UPC 등)를 쓰지 못했습니다: {e}")
+
+    async def _save_playlist_cover(self, item, downloader, settings, log, done: set[str]) -> None:
+        """Save the playlist's own artwork once per playlist folder as Cover.jpg.
+        Runs before the first song so an album cover doesn't take the name."""
+        media = item.media
+        if not (media.playlist_tags and settings.use_playlist_track_path and item.final_path):
+            return
+        folder = os.path.dirname(item.final_path)
+        if folder in done:
+            return
+        done.add(folder)
+        target = os.path.join(folder, "Cover.jpg")
+        if os.path.exists(target) and not settings.overwrite:
+            return
+        artwork = ((media.playlist_metadata or {}).get("attributes") or {}).get("artwork") or {}
+        # Only the blanks: what follows them can be the crop that makes a wide
+        # editorial image into the square cover. Apple ignores that crop at very
+        # large sizes and sends the wide original, so the size is capped.
+        size = str(min(settings.cover_size, PLAYLIST_COVER_MAX))
+        url = (artwork.get("url") or "").replace("{w}", size).replace("{h}", size).replace("{c}", "bb").replace("{f}", "jpg")
+        if not url:
+            return
+        data = await downloader.base.interface.base.get_cover_bytes(url)
+        if data:
+            os.makedirs(folder, exist_ok=True)
+            Path(target).write_bytes(data)
+            log.info("플레이리스트 커버 저장: Cover.jpg")
 
     async def _save_motion(self, item, settings, log, done: set[str]) -> None:
         """Save the album's motion cover once per album folder as Cover.mp4."""

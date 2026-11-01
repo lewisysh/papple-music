@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Any
 
 import httpx
@@ -10,6 +11,13 @@ from . import docker_ctl
 from .config import Settings
 
 LOGOUT_WAIT_SECS = 45
+# A dialog from Apple that nobody can answer; the wrapper only clicks through sign-in.
+APPLE_DIALOG_RE = re.compile(r'ProtocolDialog id=\d+ title="(.*)" buttons=.*picked_existing_apple_id=no')
+APPLE_REFUSALS = {
+    "device limit": "이 Apple 계정의 기기 등록 한도가 찼습니다. Apple Music 앱의 계정 설정 → 기기 관리에서 안 쓰는 기기를 제거하세요.",
+    "more than one device": "이 Apple 계정이 다른 기기에서 재생 중입니다. 다른 기기의 재생을 멈추고 다시 시도하세요.",
+    "no longer available": "이 Apple 계정의 스토어에서는 받을 수 없는 곡입니다.",
+}
 
 # Never forward Apple session tokens to the browser.
 SAFE_AUTH_KEYS = {"state", "apple_id", "username", "storefront", "logged_in_at", "error", "error_code"}
@@ -103,6 +111,24 @@ async def _post(settings: Settings, path: str, payload: dict | None) -> tuple[in
         except httpx.HTTPError as e:
             return 502, {"error": f"wrapper에 연결할 수 없습니다: {type(e).__name__}"}
     return response.status_code, _scrub(_body(response))
+
+
+async def explain_error(settings: Settings, message: str) -> str:
+    """Why Apple refused a song. The wrapper's error only carries a meaningless
+    number; Apple's reason reaches its log as a dialog."""
+    if "playback_dispatch_failed" not in message:
+        return message
+    try:
+        titles = APPLE_DIALOG_RE.findall(await docker_ctl.logs(settings.wrapper_container, tail=30))
+    except ValueError:
+        return message
+    if not titles:
+        return message
+    title = titles[-1]
+    for phrase, text in APPLE_REFUSALS.items():
+        if phrase in title.lower():
+            return text
+    return f"Apple 안내: {title}"
 
 
 async def login(settings: Settings, username: str, password: str) -> tuple[int, Any]:

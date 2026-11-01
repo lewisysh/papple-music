@@ -9,7 +9,7 @@ from pathlib import Path
 
 import structlog
 
-from . import convert
+from . import convert, wrapper
 from .config import DATA_DIR, SettingsStore
 from .prompts import WebPrompts
 from .runner import Session, create_session
@@ -161,7 +161,7 @@ class StreamService:
                     # A stale token is the usual cause; retry once with a new session.
                     await self._drop_session(quality)
                     if attempt:
-                        raise StreamError(str(e) or type(e).__name__) from e
+                        raise StreamError(await wrapper.explain_error(self.store.get(), str(e) or type(e).__name__)) from e
             if not target.exists():
                 raise StreamError("재생할 수 있는 음원을 찾지 못했습니다")
             if video:

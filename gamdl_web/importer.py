@@ -22,6 +22,7 @@ from .config import DATA_DIR
 from .search import SearchRateLimited, SearchService, _item
 
 IMPORTS_PATH = DATA_DIR / "imports.json"
+AUDIO_SUFFIXES = {".aif", ".aiff", ".flac", ".m4a", ".mp3", ".wav"}
 MAX_LINES = 500
 
 SEPARATORS = re.compile(r"\s+[-–—−]\s+|\t|\s+by\s+", re.I)
@@ -298,15 +299,22 @@ def lists() -> list[dict]:
     )
 
 
-def downloaded(name: str) -> list[str]:
-    return list(_load()["lists"].get(name, {}).get("songs", []))
+def downloaded(name: str, folder: Path) -> list[str]:
+    """Songs of a list that are still on disk."""
+    entry = _load()["lists"].get(name, {})
+    paths = entry.get("paths", {})
+    # Older lists kept no paths: all that's known is whether the folder has music.
+    older = folder.is_dir() and any(f.suffix.lower() in AUDIO_SUFFIXES for f in folder.iterdir())
+    return [s for s in entry.get("songs", []) if (Path(paths[s]).is_file() if s in paths else older)]
 
 
-def remember(name: str, song_ids: list[str]) -> None:
+def remember(name: str, songs: dict[str, str]) -> None:
+    """Add a list's songs, as song id -> saved file."""
     data = _load()
     entry = data["lists"].setdefault(name, {"songs": []})
     known = set(entry["songs"])
-    entry["songs"] += [s for s in song_ids if s not in known]
+    entry["songs"] += [s for s in songs if s not in known]
+    entry.setdefault("paths", {}).update(songs)
     entry["updated"] = time.time()
     IMPORTS_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp = IMPORTS_PATH.with_suffix(".tmp")

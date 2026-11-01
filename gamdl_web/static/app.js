@@ -228,6 +228,7 @@ function restoreScroll() {
 }
 
 function route() {
+  refreshDownloaded();
   hideTip();
   closeDescription();
   const [head, ...rest] = location.pathname.split("/").filter(Boolean).map(decodeURIComponent);
@@ -345,6 +346,7 @@ function connectEvents() {
     state.jobs.set(job.id, job);
     renderJob(job);
     updateQueueChrome();
+    if (["done", "error", "cancelled"].includes(job.status)) refreshDownloaded();
   });
   source.addEventListener("job_removed", (e) => {
     const { id } = JSON.parse(e.data);
@@ -777,6 +779,32 @@ async function queueUrls(urls, overrides = {}, item = null) {
   urls.forEach((u) => state.queued.add(u));
 }
 
+function markDownloadButtons(url, queued) {
+  $$(`[data-download="${CSS.escape(url)}"]`).forEach((b) => {
+    const label = queued ? "대기열에 추가됨" : "다운로드";
+    b.classList.toggle("queued", queued);
+    b.title = queued ? "대기열에 추가됨 · 누르면 다운로드 화면으로" : label;
+    b.setAttribute("aria-label", label);
+    const text = b.classList.contains("btn") ? (queued ? label : b.dataset.label) : "";
+    b.innerHTML = `${icon(queued ? "checkmark" : "arrowdown")}${text}`;
+  });
+}
+
+// A check mark means the download is going or its files are still there. Once
+// they're gone, or it failed, the link can be downloaded again.
+async function refreshDownloaded() {
+  const urls = [...state.queued];
+  if (!urls.length) return;
+  try {
+    const { saved } = await api("/api/jobs/saved", { method: "POST", body: { urls } });
+    urls.filter((u) => saved[u] === false).forEach((u) => {
+      state.queued.delete(u);
+      markDownloadButtons(u, false);
+    });
+  } catch { /* server away: leave the buttons as they are */ }
+}
+window.addEventListener("focus", refreshDownloaded);
+
 const APPLE_URL_RE = /https?:\/\/(?:music|itunes)\.apple\.com\/\S+/g;
 
 function parseAppleUrl(url) {
@@ -1029,11 +1057,7 @@ sheet.ok.addEventListener("click", async () => {
   try {
     await queueUrls([it.url], choice.overrides, it);
     if (choice.family !== "video") store.set("lastFamily", choice.family);
-    $$(`[data-download="${CSS.escape(it.url)}"]`).forEach((b) => {
-      b.classList.add("queued");
-      b.innerHTML = b.classList.contains("btn") ? `${icon("checkmark")}대기열에 추가됨` : icon("checkmark");
-      b.title = "대기열에 추가됨 · 누르면 다운로드 화면으로";
-    });
+    markDownloadButtons(it.url, true);
     if (composer.urls.value.trim() === it.url) { composer.urls.value = ""; autosize(); }
     toast(`대기열에 추가했습니다 · ${choice.overrides.format_label}`, "ok");
     closeDownloadSheet();
@@ -1495,7 +1519,7 @@ function detailHead(it, extra) {
         <div class="detail-meta"><span>${meta}</span>${qualityMarks(it)}</div>
         <div class="detail-actions">
           ${extra.playable ? `<button class="btn btn-play" data-play-all>${icon("play")}재생</button>` : ""}
-          ${download && it.url ? `<button class="btn btn-primary" data-download="${esc(it.url)}" data-name="${esc(it.name)}">${icon("arrowdown")}${download}</button>` : ""}
+          ${download && it.url ? `<button class="btn btn-primary" data-download="${esc(it.url)}" data-name="${esc(it.name)}" data-label="${esc(download)}">${icon("arrowdown")}${download}</button>` : ""}
           ${motion ? `<a class="btn btn-gray" href="/api/motion/albums/${esc(it.id)}?quality=best&download=1" download>${icon("play")}움직이는 커버 저장</a>` : ""}
           ${it.url ? `<a class="btn btn-gray" href="${esc(it.url)}" target="_blank" rel="noopener">Apple Music에서 열기</a>` : ""}
         </div>

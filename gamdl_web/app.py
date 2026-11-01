@@ -649,6 +649,10 @@ class JobRequest(BaseModel):
     positions: list[int] | None = None
 
 
+class SavedRequest(BaseModel):
+    urls: list[str] = Field(max_length=2000)
+
+
 class ImportText(BaseModel):
     text: str = Field(max_length=200_000)
 
@@ -677,8 +681,10 @@ async def import_lists():
 
 
 @app.get("/api/import/lists/{name}")
-async def import_list(name: str):
-    return {"name": importer.safe_name(name), "songs": importer.downloaded(importer.safe_name(name))}
+async def import_list(request: Request, name: str):
+    name = importer.safe_name(name)
+    folder = Path(_state(request).store.get().output_path).expanduser() / "Imports" / name
+    return {"name": name, "songs": importer.downloaded(name, folder)}
 
 
 @app.get("/api/jobs")
@@ -738,6 +744,11 @@ def _job_action(request: Request, job_id: str, fn: str):
         raise HTTPException(404, "작업을 찾을 수 없습니다")
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+@app.post("/api/jobs/saved")
+async def saved_files(request: Request, body: SavedRequest):
+    return {"saved": _state(request).manager.saved(body.urls)}
 
 
 @app.post("/api/jobs/clear")
