@@ -668,6 +668,9 @@ const I18N_EN = {
 "Safari와 Mac 앱에서 한글 검색어 입력 후 Enter가 바로 검색돼요": "Korean input now searches with one Enter in Safari and the Mac app",
 // DJ key/BPM
 "DJ용 키·BPM 태그: 기존 파일, GetSongBPM, Deezer에서 가져와 캠블롯·음악 표기·오픈 키로 넣어요": "Key and BPM tags for DJs, from your own files, GetSongBPM and Deezer, in Camelot, musical or Open Key notation",
+"긴 보관함 플레이리스트에서 101번째 곡부터 잠긴 AAC로 받아지던 문제를 고쳤어요": "Long library playlists no longer turn into locked AAC files from the 101st song",
+"Apple Music에서 내려간 곡은 잠긴 파일을 받지 않고 이유를 보여줘요": "Songs that left Apple Music are skipped with the reason instead of saved as locked files",
+"커버가 없는 곡도 받을 수 있어요": "Songs without a cover download too",
 "파일이 사라졌거나 다운로드가 실패하면 다운로드 버튼이 다시 나타나요": "The download button comes back when a file is gone or a download fails",
 "기기 등록 한도처럼 Apple이 거부한 이유를 알기 쉽게 보여줘요": "Shows why Apple refused a song, such as the account's device limit",
 "플레이리스트를 받으면 커버도 Cover.jpg로 저장돼요": "Playlist downloads also save the playlist cover as Cover.jpg",
