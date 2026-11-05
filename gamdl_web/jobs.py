@@ -75,9 +75,10 @@ COLLECTION_TYPES = {
 }
 FINISHED = {"done", "error", "cancelled"}
 PLAYLIST_COVER_MAX = 3000
+PLAYLIST_FOLDER_RE = re.compile(r"%playlist(?:_id)?%|\{playlist_(?:title|id)\}", re.IGNORECASE)
 
 
-SINGLE_SONG_URL_RE = re.compile(r"/song/|[?&]i=\d")
+SINGLE_SONG_URL_RE = re.compile(r"/song/|[?&]i=\d|/library/songs/")
 
 @dataclass
 class Track:
@@ -520,12 +521,20 @@ class JobManager:
             log.warning(f"추가 태그(레이블·UPC 등)를 쓰지 못했습니다: {e}")
 
     async def _save_playlist_cover(self, item, downloader, settings, log, done: set[str]) -> None:
-        """Save the playlist's own artwork once per playlist folder as Cover.jpg.
-        Runs before the first song so an album cover doesn't take the name."""
+        """Save the playlist's own artwork once, in the playlist's folder, as
+        Cover.jpg. Runs before the first song so an album cover doesn't take the name."""
         media = item.media
         if not (media.playlist_tags and settings.use_playlist_track_path and item.final_path):
             return
+        # Only a folder of this playlist's own: one every playlist shares (like
+        # "Songs") would get each playlist's cover in turn.
+        if not PLAYLIST_FOLDER_RE.search(settings.playlist_track_folder_template):
+            return
+        # The track template can add folders below it (artist/album): go back up,
+        # so album folders keep their own cover.
         folder = os.path.dirname(item.final_path)
+        for _ in range(settings.playlist_track_template.count("/")):
+            folder = os.path.dirname(folder)
         if folder in done:
             return
         done.add(folder)

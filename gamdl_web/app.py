@@ -653,6 +653,10 @@ class SavedRequest(BaseModel):
     urls: list[str] = Field(max_length=2000)
 
 
+class LibraryDownload(BaseModel):
+    overrides: dict[str, Any] = {}
+
+
 class ImportText(BaseModel):
     text: str = Field(max_length=200_000)
 
@@ -744,6 +748,30 @@ def _job_action(request: Request, job_id: str, fn: str):
         raise HTTPException(404, "작업을 찾을 수 없습니다")
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+@app.post("/api/library/download")
+async def download_library(request: Request, body: LibraryDownload):
+    """Queue every song in the library as one download, filed by album."""
+    state = _state(request)
+    overrides = {k: v for k, v in body.overrides.items() if k in JOB_OVERRIDE_FIELDS}
+    try:
+        state.store.get().merged(overrides)
+    except ValidationError as e:
+        raise HTTPException(400, _error_detail(e))
+    try:
+        songs = await state.search.library_songs()
+    except Exception as e:
+        raise HTTPException(502, f"보관함을 불러오지 못했습니다: {e}")
+    urls = list(dict.fromkeys(s["url"] for s in songs))
+    if not urls:
+        raise HTTPException(404, "보관함에 곡이 없습니다")
+    # Album folders like the Music app, not one Songs folder of thousands.
+    overrides["single_song_folder"] = False
+    artwork = next((s["artwork"] for s in songs if s["artwork"]), None)
+    preview = {"title": "보관함 전체", "artist": f"{len(urls)}곡", "artwork": artwork, "type": "library"}
+    job = state.manager.submit(urls, overrides, preview)
+    return {"count": len(urls), "job": job.public()}
 
 
 @app.post("/api/jobs/saved")

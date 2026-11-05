@@ -719,6 +719,8 @@ input.switch:focus-visible { outline: 3px solid var(--accent-tint); outline-offs
   color: var(--label); font-size: 13px; text-decoration: none; transition: background 0.15s;
 }
 .sb-pl:hover { background: var(--fill-2); text-decoration: none; }
+.sb-pl-all { width: 100%; border: 0; background: none; font: inherit; text-align: left; cursor: pointer; margin-bottom: 4px; }
+.sb-pl-all .sb-pl-art svg { width: 14px; height: 14px; }
 .sb-pl.active { background: var(--fill); }
 .sb-pl > span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sb-pl-art { width: 26px; height: 26px; flex: none; border-radius: 5px; overflow: hidden; background: var(--fill); display: grid; place-items: center; color: var(--accent); font-size: 13px; }
@@ -840,6 +842,7 @@ img.loaded { opacity: 1 !important; }
 .play-btn:hover { background: var(--fill); }
 .play-btn:active { transform: scale(0.92); }
 .playing .play-btn { color: var(--accent); }
+.play-btn.ghost, .dl-btn.ghost { visibility: hidden; pointer-events: none; }
 .playing .song-title { color: var(--accent); }
 .btn-play { background: var(--label); color: var(--bg); }
 .btn-play:hover { opacity: 0.85; }

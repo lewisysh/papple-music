@@ -163,5 +163,5 @@ def expand(template: str, values: dict[str, str]) -> str:
 
     parts = []
     for part in template.split("/"):
-        parts.append(_tidy(VAR_RE.sub(value, part)) or "_" if VAR_RE.search(part) else part)
+        parts.append(_tidy(VAR_RE.sub(value, part)) or "Unknown" if VAR_RE.search(part) else part)
     return "/".join(parts)

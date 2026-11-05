@@ -28,6 +28,7 @@ ANONYMOUS_RETRY = 15
 # After the account's token is rate limited (429), catalog reads go through the
 # public web-player token for this long; it has its own, separate quota.
 THROTTLE_COOLDOWN = 5 * 60
+LIBRARY_SONG_LIMIT = 50_000
 
 
 class SearchError(Exception):
@@ -466,6 +467,34 @@ class SearchService:
             offset += len(page)
         return playlists
 
+    async def library_songs(self) -> list[dict[str, Any]]:
+        """Every song in the library, by artist and album: the catalog song when it
+        is linked to one, the library entry otherwise (the download looks it up again)."""
+        songs, offset = [], 0
+        while offset < LIBRARY_SONG_LIMIT:
+            page = await self._get(
+                "/v1/me/library/songs", {"include": "catalog", "limit": 100, "offset": offset}, missing_ok=True
+            )
+            data = page.get("data", [])
+            for t in data:
+                a = t.get("attributes") or {}
+                catalog = ((t.get("relationships") or {}).get("catalog") or {}).get("data") or []
+                c = (catalog[0].get("attributes") or {}) if catalog else {}
+                songs.append({
+                    "url": c.get("url") or f"https://music.apple.com/library/songs/{t['id']}",
+                    # Catalog art: an upload's art is a short-lived signed link.
+                    "artwork": _artwork(c, 300) if (c.get("artwork") or {}).get("url") else None,
+                    "order": (
+                        not a.get("artistName"), (a.get("artistName") or "").casefold(), (a.get("albumName") or "").casefold(),
+                        a.get("discNumber") or 0, a.get("trackNumber") or 0,
+                    ),
+                })
+            if not page.get("next") or not data:
+                break
+            offset += len(data)
+        songs.sort(key=lambda s: s["order"])
+        return songs
+
     async def library_playlist(self, playlist_id: str) -> dict[str, Any]:
         raw = await self._get(f"/v1/me/library/playlists/{playlist_id}", {"l": self.store.get().language})
         playlist = raw["data"][0]
@@ -483,7 +512,8 @@ class SearchService:
                 # Download the catalog version when there is one; the library entry otherwise.
                 item = _item(catalog[0]) if catalog and catalog[0].get("attributes") else _item(t)
                 if not catalog:
-                    item["url"] = None
+                    # Not linked to the catalog right now: the download looks it up again.
+                    item["url"] = f"https://music.apple.com/library/songs/{t['id']}"
                 tracks.append(item)
             if not page.get("next"):
                 break

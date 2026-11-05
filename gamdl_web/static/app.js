@@ -144,7 +144,7 @@ const TYPE_LABEL = {
   albums: "앨범", "library-albums": "보관함 앨범", playlists: "플레이리스트",
   "library-playlists": "보관함 플레이리스트", artists: "아티스트",
   songs: "곡", "library-songs": "곡", "music-videos": "뮤직비디오", "uploaded-videos": "영상",
-  import: "목록",
+  import: "목록", library: "보관함",
 };
 const CODEC_NAMES = {
   "aac-web": "AAC", "aac-he-web": "AAC-HE", aac: "AAC 48kHz", "aac-he": "AAC-HE 48kHz",
@@ -1055,6 +1055,16 @@ sheet.ok.addEventListener("click", async () => {
   if (!it || !choice) return;
   sheet.ok.disabled = true;
   try {
+    if (it.type === "library") {
+      // The server lists the library itself; that takes a few seconds for big ones.
+      const r = await api("/api/library/download", {
+        method: "POST", body: { overrides: { use_wrapper: wrapperReady(), ...choice.overrides } },
+      });
+      store.set("lastFamily", choice.family);
+      toast(`보관함 ${r.count}곡을 대기열에 추가했습니다 · ${choice.overrides.format_label}`, "ok");
+      closeDownloadSheet();
+      return;
+    }
     await queueUrls([it.url], choice.overrides, it);
     if (choice.family !== "video") store.set("lastFamily", choice.family);
     markDownloadButtons(it.url, true);
@@ -1225,15 +1235,19 @@ const artAt = (url, n) => (url || "").replace(/\/\d+x\d+(\w*)\.(jpg|png|webp)/, 
 const artworkImg = (it) =>
   it.artwork ? `<img src="${esc(it.artwork)}" alt="" loading="lazy">` : `<span class="art-ph">${icon("note")}</span>`;
 
+// Holds a button's place in list rows, so lengths line up when one is missing.
+const GHOST_PLAY = '<span class="play-btn ghost" aria-hidden="true"></span>';
+const GHOST_DOWNLOAD = '<span class="dl-btn ghost" aria-hidden="true"></span>';
+
 function itemActions(it, overlay = false) {
-  if (!it.url) return "";
+  if (!it.url) return overlay ? "" : GHOST_PLAY + GHOST_DOWNLOAD;
   const queued = state.queued.has(it.url);
   const video = it.type === "music-videos";
   const play = it.type === "songs" && !overlay
     ? `<button class="play-btn" data-play="${esc(it.url)}" title="재생" aria-label="재생">${icon("play")}</button>`
     : video
       ? `<button class="${overlay ? "ov-btn" : "play-btn"}" data-play-video="${esc(it.url)}" title="영상 재생" aria-label="영상 재생">${icon("play")}</button>`
-      : "";
+      : overlay ? "" : GHOST_PLAY;
   return `
     <button class="${overlay ? "ov-btn" : "icon-btn"}" data-copy="${esc(it.url)}" title="링크 복사" aria-label="링크 복사">${icon("link")}</button>${play}
     <button class="dl-btn${queued ? " queued" : ""}" data-download="${esc(it.url)}" data-name="${esc(it.name)}"
@@ -1714,6 +1728,10 @@ async function loadMe(refresh = false) {
     </a>`).join("");
   markLibraryPlaylist();
 }
+
+$("#sb-library-download").addEventListener("click", () =>
+  // Titles here are names, which the page doesn't translate on its own.
+  openDownloadSheet({ type: "library", name: i18n.t("보관함 전체"), artist: "모든 곡 · 앨범별 폴더", url: "library:all" }));
 
 function markLibraryPlaylist() {
   $$(".sb-pl").forEach((a) => a.classList.toggle("active", a.getAttribute("href") === location.pathname));
@@ -2849,6 +2867,9 @@ function jobHeader(job) {
     // A pasted list: its name, not its first song.
     title = job.import_name;
     sub.push(`${job.urls.length}곡`, TYPE_LABEL.import);
+  } else if (job.preview?.type === "library") {
+    title = i18n.t(job.preview.title);
+    sub.push(`${job.urls.length}곡`, TYPE_LABEL.library);
   } else if (col) {
     title = col.title;
     sub.push(col.artist, TYPE_LABEL[col.type]);
@@ -2864,7 +2885,7 @@ function jobHeader(job) {
   } else {
     title = job.urls[0].replace(/^https?:\/\/(music\.)?apple\.com\//, "");
   }
-  if (job.urls.length > 1 && !job.import_name) sub.push(`링크 ${job.urls.length}개`);
+  if (job.urls.length > 1 && !job.import_name && job.preview?.type !== "library") sub.push(`링크 ${job.urls.length}개`);
   else if (job.collections.length > 1) sub.push(`외 ${job.collections.length - 1}개`);
   if (job.started_at) sub.push(fmtDuration((job.finished_at || Date.now() / 1000) - job.started_at));
   return { title, artwork: col?.artwork || tracks[0]?.artwork || job.preview?.artwork, sub: sub.filter(Boolean).join(" · ") };
@@ -2943,7 +2964,7 @@ function stageText(t) {
   return label;
 }
 
-const SONG_LINK_RE = /\/song\/|[?&]i=\d/;
+const SONG_LINK_RE = /\/song\/|[?&]i=\d|\/library\/songs\//;
 
 function jobProgress(job) {
   const c = job.counts;

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -85,6 +87,14 @@ class WebBaseInterface(AppleMusicBaseInterface):
         except httpx.HTTPError as e:
             logger.warning(f"커버 이미지를 받지 못해 커버 없이 진행합니다: {e}")
             return None
+
+    async def get_tags_from_asset_info(self, asset_data: dict, *args, **kwargs):
+        # The user's own uploads can lack fields gamdl reads without checking,
+        # such as an MP3 with no artist.
+        name = asset_data.get("itemName") or "Unknown Title"
+        defaults = {"artistName": None, "sort-artist": None, "itemName": name, "sort-name": name, "kind": "song", "explicit": 0}
+        filled = {**defaults, **{k: v for k, v in asset_data.items() if v is not None}}
+        return await super().get_tags_from_asset_info(filled, *args, **kwargs)
 
     async def get_cover(self, metadata: dict):
         if not ((metadata.get("attributes") or {}).get("artwork") or {}).get("url"):
@@ -231,6 +241,29 @@ class WebBaseDownloader(AppleMusicBaseDownloader):
         finally:
             watcher.cancel()
         progress.report("download", total, total)
+        if not stream_url.split("?")[0].endswith(".m3u8"):
+            await self._to_mp4(download_path)
+
+    async def _to_mp4(self, path: str) -> None:
+        """A library upload can be an MP3 or the like; gamdl only writes MP4.
+        AAC and ALAC move into MP4 as they are, anything else becomes AAC 256."""
+        with open(path, "rb") as f:
+            if f.read(8)[4:8] == b"ftyp":
+                return
+        codec = (await convert.probe(path, convert._ffprobe_for(self.ffmpeg_path))).get("codec_name")
+        audio = ["-c:a", "copy"] if codec in {"aac", "alac"} else ["-c:a", "aac", "-b:a", "256k"]
+        out = f"{path}.mp4"
+        proc = await asyncio.create_subprocess_exec(
+            self.ffmpeg_path, "-v", "error", "-y", "-i", path, "-map", "0:a:0", *audio, "-f", "mp4", out,
+            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+        )
+        _, err = await proc.communicate()
+        if proc.returncode != 0:
+            Path(out).unlink(missing_ok=True)
+            raise RuntimeError(f"올린 파일을 m4a로 옮기지 못했습니다 ({codec}): {err.decode(errors='replace')[-200:]}")
+        os.replace(out, path)
+        if codec not in {"aac", "alac"}:
+            logger.info(f"올린 파일이 {codec}라서 AAC 256kbps m4a로 바꿨습니다")
 
     async def apply_tags(self, media_path, tags, cover_bytes):
         if self.skip_tags:
@@ -271,18 +304,74 @@ async def _is_locked_stream(url: str) -> bool:
         return False
 
 
+# A library song added from Apple Music whose catalog entry is gone is usually
+# the same recording re-released under a new id: find it by name, and take it
+# only when the title matches and the length is the same to the second or two.
+TWIN_MIN_SCORE = 0.9
+TWIN_MAX_DRIFT_MS = 2000
+TWIN_SEARCH_INTERVAL = 1.0
+_twin_pace = {"next": 0.0}
+
+
+def _catalog_link(library: dict) -> list:
+    return (((library.get("relationships") or {}).get("catalog")) or {}).get("data") or []
+
+
+async def _catalog_twin(api: AppleMusicApi, library: dict) -> dict | None:
+    # Imported here: importer imports search, which imports this module.
+    from .importer import _base_title, score
+
+    a = library.get("attributes") or {}
+    length = a.get("durationInMillis")
+    if not (a.get("playParams") or {}).get("catalogId") or not a.get("name") or not length:
+        return None  # the user's own upload: its library copy is the real one
+    results = None
+    for wait in (0, 5, 15, 40):
+        await asyncio.sleep(max(wait, _twin_pace["next"] - time.monotonic()))
+        _twin_pace["next"] = time.monotonic() + TWIN_SEARCH_INTERVAL
+        try:
+            results = await api.get_search_results(f"{a.get('artistName', '')} {a['name']}", types="songs", limit=10)
+            break
+        except GamdlApiResponseError as e:
+            if e.status_code != 429:
+                return None
+    best = None
+    for song in ((results or {}).get("results", {}).get("songs", {}).get("data") or []):
+        c = song.get("attributes") or {}
+        drift = abs((c.get("durationInMillis") or 0) - length)
+        item = {"name": c.get("name"), "artist": c.get("artistName"), "album": c.get("albumName")}
+        if (
+            drift <= TWIN_MAX_DRIFT_MS
+            and _base_title(c.get("name") or "") == _base_title(a["name"])
+            and score(a.get("artistName") or "", a["name"], item) >= TWIN_MIN_SCORE
+            and (best is None or drift < best[0])
+        ):
+            best = (drift, song["id"])
+    if best is None:
+        return None
+    return (await api.get_song(best[1]))["data"][0]
+
+
 class WebSongInterface(AppleMusicSongInterface):
     """Library songs come from the catalog whenever it has them; the rest only
     when Apple offers them unencrypted (the user's own uploads)."""
 
     async def get_media(self, media):
-        relationships = (media.media_metadata or {}).get("relationships") or {}
-        if media.is_library and media.media_metadata and "catalog" not in relationships:
-            # Listed without its catalog link because nobody asked for it: ask.
-            try:
-                media.media_metadata = (await self.base.apple_music_api.get_library_song(media.media_id))["data"][0]
-            except Exception as e:
-                logger.debug("library_catalog_lookup_failed", media_id=media.media_id, error=str(e))
+        api = self.base.apple_music_api
+        if media.is_library:
+            relationships = (media.media_metadata or {}).get("relationships") or {}
+            if not media.media_metadata or "catalog" not in relationships:
+                # Listed without its catalog link because nobody asked for it: ask.
+                try:
+                    media.media_metadata = (await api.get_library_song(media.media_id))["data"][0]
+                except Exception as e:
+                    logger.debug("library_catalog_lookup_failed", media_id=media.media_id, error=str(e))
+            if media.media_metadata and not _catalog_link(media.media_metadata):
+                twin = await _catalog_twin(api, media.media_metadata)
+                if twin:
+                    a = media.media_metadata.get("attributes") or {}
+                    logger.info(f'보관함 곡을 카탈로그에서 다시 찾았습니다: "{a.get("artistName")} - {a.get("name")}"')
+                    media.media_id, media.is_library, media.media_metadata = twin["id"], False, twin
         async for item in super().get_media(media):
             yield item
 
