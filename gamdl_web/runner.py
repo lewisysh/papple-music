@@ -4,6 +4,7 @@ import asyncio
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urljoin, urlparse
 
 import httpx
 import structlog
@@ -16,6 +17,7 @@ from gamdl.downloader import (
     AppleMusicUploadedVideoDownloader,
 )
 from gamdl.downloader.enums import DownloadMode, RemuxFormatMusicVideo
+from gamdl.interface.types import Cover
 from gamdl.interface import (
     AppleMusicBaseInterface,
     AppleMusicInterface,
@@ -32,7 +34,7 @@ from gamdl.interface import (
     UploadedVideoQuality,
 )
 
-from . import naming, progress
+from . import convert, naming, progress
 from .config import Settings
 from .prompts import WebPrompts
 
@@ -46,6 +48,18 @@ class SetupError(Exception):
 # The artwork server never upscales: asking for more than the original returns
 # the original resolution.
 MAX_COVER_SIZE = 10000
+
+
+class WebAppleMusicApi(AppleMusicApi):
+    """Keeps library songs linked to the catalog past the first page."""
+
+    async def get_extended_api_data(self, next_uri: str | None, href_uri: str) -> dict:
+        # A library playlist's "next" link drops include=catalog, so songs past
+        # the first 100 lost their catalog link and gamdl saved the library's
+        # still-encrypted file as if it were DRM-free.
+        if next_uri and urlparse(next_uri).path.startswith("/v1/me/library/") and "include=" not in next_uri:
+            next_uri += ("&" if "?" in next_uri else "?") + "include=catalog"
+        return await super().get_extended_api_data(next_uri, href_uri)
 
 
 class WebBaseInterface(AppleMusicBaseInterface):
@@ -73,6 +87,9 @@ class WebBaseInterface(AppleMusicBaseInterface):
             return None
 
     async def get_cover(self, metadata: dict):
+        if not ((metadata.get("attributes") or {}).get("artwork") or {}).get("url"):
+            # Some songs have no artwork at all, often library songs Apple no longer sells.
+            return Cover(file_extension=".jpg")
         cover = await super().get_cover(metadata)
         if cover.file_extension is None:
             # gamdl builds "Cover" + extension later, so keep it a string.
@@ -224,6 +241,58 @@ class WebBaseDownloader(AppleMusicBaseDownloader):
         await super().apply_tags(media_path, tags, cover_bytes)
 
 
+LOCKED_LIBRARY_MESSAGE = (
+    "Apple Music 카탈로그에서 내려간 보관함 곡이라 잠긴(DRM) 버전만 남아 있어서 받지 않았습니다."
+)
+
+
+class LockedLibrarySongError(Exception):
+    """A library song Apple only offers encrypted: it left the catalog."""
+
+
+async def _is_locked_stream(url: str) -> bool:
+    """Whether a library song's stream is still encrypted, from its playlist or
+    the first megabyte, so nothing locked is ever saved. Unsure counts as no:
+    the job checks the finished file again."""
+    try:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            if urlparse(url).path.endswith(".m3u8"):
+                text = (await client.get(url)).text
+                variant = next((l for l in text.splitlines() if l and not l.startswith("#")), None)
+                if "#EXT-X-STREAM-INF" in text and variant:
+                    text += (await client.get(urljoin(url, variant))).text
+                return any(
+                    line.startswith(("#EXT-X-KEY", "#EXT-X-SESSION-KEY")) and "METHOD=NONE" not in line
+                    for line in text.splitlines()
+                )
+            head = (await client.get(url, headers={"Range": "bytes=0-1048575"})).content
+            return bool(convert.head_is_protected(head))
+    except httpx.HTTPError:
+        return False
+
+
+class WebSongInterface(AppleMusicSongInterface):
+    """Library songs come from the catalog whenever it has them; the rest only
+    when Apple offers them unencrypted (the user's own uploads)."""
+
+    async def get_media(self, media):
+        relationships = (media.media_metadata or {}).get("relationships") or {}
+        if media.is_library and media.media_metadata and "catalog" not in relationships:
+            # Listed without its catalog link because nobody asked for it: ask.
+            try:
+                media.media_metadata = (await self.base.apple_music_api.get_library_song(media.media_id))["data"][0]
+            except Exception as e:
+                logger.debug("library_catalog_lookup_failed", media_id=media.media_id, error=str(e))
+        async for item in super().get_media(media):
+            yield item
+
+    async def _get_library_stream_info(self, webplayback):
+        stream_info = await super()._get_library_stream_info(webplayback)
+        if stream_info and await _is_locked_stream(stream_info.audio_track.stream_url):
+            raise LockedLibrarySongError(LOCKED_LIBRARY_MESSAGE)
+        return stream_info
+
+
 class WebSongDownloader(AppleMusicSongDownloader):
     async def get_download_item(self, media):
         # get_final_path runs before the first await in here, so this can't
@@ -282,7 +351,7 @@ async def create_apple_music_api(
                 ) from e
             raise SetupError(f"wrapper 오류: {e}") from e
         try:
-            api = await AppleMusicApi.create_from_wrapper(
+            api = await WebAppleMusicApi.create_from_wrapper(
                 wrapper_api=wrapper_api,
                 language=settings.language,
             )
@@ -301,7 +370,7 @@ async def create_apple_music_api(
             "cookies.txt가 없습니다. 설정 탭에서 Apple Music 쿠키 파일을 업로드하거나 wrapper를 사용하세요."
         )
     try:
-        api = await AppleMusicApi.create_from_netscape_cookies(
+        api = await WebAppleMusicApi.create_from_netscape_cookies(
             cookies_path=str(cookies_path),
             language=settings.language,
         )
@@ -338,7 +407,7 @@ async def create_session(settings: Settings, prompts: WebPrompts) -> Session:
         prd_path=settings.prd_path or None,
         drm_backend=DrmBackend(settings.drm_backend),
     )
-    song_interface = AppleMusicSongInterface(
+    song_interface = WebSongInterface(
         base=base_interface,
         synced_lyrics_format=SyncedLyricsFormat(settings.synced_lyrics_format),
         codec_priority=[SongCodec(c) for c in settings.song_codec_priority],

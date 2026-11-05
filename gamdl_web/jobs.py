@@ -32,7 +32,7 @@ from .config import SettingsStore
 from .events import EventBus
 from .logs import current_job_id
 from .prompts import PromptBroker, PromptCancelledError, WebPrompts, _artwork
-from .runner import SetupError, artist_auto_select, create_session
+from .runner import LockedLibrarySongError, SetupError, artist_auto_select, create_session
 
 logger = structlog.get_logger("gamdl_web")
 
@@ -45,7 +45,10 @@ SKIP_ERRORS = (
     GamdlDownloaderDependencyNotFoundError,
     GamdlInterfaceFlatFilterExcludedError,
     PromptCancelledError,
+    LockedLibrarySongError,
 )
+# Last line of defence; LockedLibrarySongError normally stops these before download.
+PROTECTED_MESSAGE = "받은 파일이 잠겨(DRM) 있어서 저장하지 않았습니다."
 SKIP_MESSAGES = {
     GamdlInterfaceMediaNotStreamableError: "스트리밍할 수 없는 항목",
     GamdlInterfaceFormatNotAvailableError: "고른 코덱으로 제공되지 않음",
@@ -400,6 +403,17 @@ class JobManager:
                         self._publish(job)
                         continue
 
+                if (
+                    track is not None
+                    and media_type in {"songs", "library-songs"}
+                    and item.final_path
+                    and os.path.exists(item.final_path)
+                    and await asyncio.to_thread(convert.is_protected, item.final_path)
+                ):
+                    # A locked file from before is in the way: fetch the song again.
+                    os.remove(item.final_path)
+                    log.info(f'잠긴 파일을 지우고 다시 받습니다: "{track.title}"')
+
                 token = progress.reporter.set(self._progress_reporter(job, track, converting)) if track else None
                 try:
                     await downloader.download(item)
@@ -428,7 +442,21 @@ class JobManager:
                     else:
                         job.error = message
                 else:
-                    if track and not media.partial:
+                    protected = (
+                        track is not None
+                        and not media.partial
+                        and media_type in {"songs", "library-songs"}
+                        and os.path.exists(item.final_path)
+                        and await asyncio.to_thread(convert.is_protected, item.final_path)
+                    )
+                    if protected:
+                        for leftover in (item.final_path, item.synced_lyrics_path):
+                            if leftover and os.path.exists(leftover):
+                                os.remove(leftover)
+                        log.error(f'오류 "{track.title}": {PROTECTED_MESSAGE}')
+                        track.status = "error"
+                        track.message = PROTECTED_MESSAGE
+                    elif track and not media.partial:
                         track.path = item.final_path
                         if media_type in {"songs", "library-songs"} and os.path.exists(item.final_path):
                             track.quality = await convert.audio_quality(item.final_path, settings.ffmpeg_path)

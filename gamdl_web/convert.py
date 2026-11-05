@@ -31,6 +31,66 @@ EXTRA_TAGS = {"label": "LABEL", "upc": "UPC", "url": "URL", "language": "LANGUAG
 FREEFORM = "----:com.apple.iTunes:"
 
 
+# Sample entry types of audio or video that is still encrypted: HLS FairPlay or
+# CENC ("enca"/"encv") and iTunes-style protected files ("drms"/"drmi").
+PROTECTED_ENTRIES = {b"enca", b"encv", b"drms", b"drmi"}
+# Boxes on the way from the top of an MP4 to its sample descriptions.
+_STSD_PATH = (b"moov", b"trak", b"mdia", b"minf", b"stbl", b"stsd")
+
+
+def _boxes(data: bytes, start: int = 0, end: int | None = None):
+    """(type, body start, end) of each box in data[start:end]."""
+    end = len(data) if end is None else end
+    while start + 8 <= end:
+        size, kind, body = int.from_bytes(data[start:start + 4], "big"), data[start + 4:start + 8], start + 8
+        if size == 1:
+            size, body = int.from_bytes(data[start + 8:start + 16], "big"), start + 16
+        elif size == 0:
+            size = end - start
+        if size < body - start or start + size > end:
+            return
+        yield kind, body, start + size
+        start += size
+
+
+def _sample_entries(moov: bytes, depth: int = 1, start: int = 0, end: int | None = None):
+    for kind, body, box_end in _boxes(moov, start, end):
+        if kind != _STSD_PATH[depth]:
+            continue
+        if kind == b"stsd":
+            # version/flags and entry count come before the entries.
+            yield from (k for k, _, _ in _boxes(moov, body + 8, box_end))
+        else:
+            yield from _sample_entries(moov, depth + 1, body, box_end)
+
+
+def head_is_protected(data: bytes) -> bool | None:
+    """Like is_protected, for the start of a file: None when its moov isn't in data."""
+    for kind, body, end in _boxes(data):
+        if kind == b"moov":
+            return any(e in PROTECTED_ENTRIES for e in _sample_entries(data, 1, body, end))
+    return None
+
+
+def is_protected(path: str) -> bool:
+    """Whether an MP4 file is still DRM-encrypted, which nothing but Apple's
+    Music app can play."""
+    with open(path, "rb") as f:
+        while True:
+            header = f.read(8)
+            if len(header) < 8:
+                return False
+            size, kind, read = int.from_bytes(header[:4], "big"), header[4:], 8
+            if size == 1:
+                size, read = int.from_bytes(f.read(8), "big"), 16
+            if kind == b"moov":
+                moov = f.read(size - read) if size else f.read()
+                return any(e in PROTECTED_ENTRIES for e in _sample_entries(moov))
+            if size == 0 or size < read:
+                return False
+            f.seek(size - read, 1)
+
+
 class ConvertError(Exception):
     pass
 

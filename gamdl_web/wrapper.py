@@ -116,6 +116,10 @@ async def _post(settings: Settings, path: str, payload: dict | None) -> tuple[in
 async def explain_error(settings: Settings, message: str) -> str:
     """Why Apple refused a song. The wrapper's error only carries a meaningless
     number; Apple's reason reaches its log as a dialog."""
+    # Some refusals come back in the error itself, e.g. from webplayback.
+    for phrase, text in APPLE_REFUSALS.items():
+        if phrase in message.lower():
+            return text
     if "playback_dispatch_failed" not in message:
         return message
     try:
