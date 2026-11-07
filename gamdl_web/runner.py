@@ -52,6 +52,24 @@ class SetupError(Exception):
 MAX_COVER_SIZE = 10000
 
 
+# Apple now and then refuses one song's playback request and gives it the
+# next time: wait a little and ask again before calling it an error.
+PLAYBACK_RETRY_WAITS = (3, 8)
+
+
+class WebWrapperApi(WrapperApi):
+    async def get_playback(self, media_id: str) -> dict:
+        for wait in PLAYBACK_RETRY_WAITS:
+            try:
+                return await super().get_playback(media_id)
+            except GamdlApiResponseError as e:
+                if e.status_code != 502 or "playback_dispatch_failed" not in str(e.content):
+                    raise
+                logger.info(f"Apple이 재생 정보를 주지 않아 {wait}초 뒤 다시 요청합니다")
+                await asyncio.sleep(wait)
+        return await super().get_playback(media_id)
+
+
 class WebAppleMusicApi(AppleMusicApi):
     """Keeps library songs linked to the catalog past the first page."""
 
@@ -145,6 +163,10 @@ async def fetch_in_ranges(url: str, path: str, parts: int = 4) -> None:
         await asyncio.gather(*(fetch(start) for start in range(0, size, step)))
 
 
+# Leaves room under the 255-byte limit for a converted file's longer extension.
+MAX_NAME_BYTES = 240
+
+
 class WebBaseDownloader(AppleMusicBaseDownloader):
     """Adds a separate path for playlist tracks and honours "cover" in exclude_tags."""
 
@@ -176,6 +198,17 @@ class WebBaseDownloader(AppleMusicBaseDownloader):
         self.current_media = None
         # Playback cache files need no tags; StreamService turns this on.
         self.skip_tags = False
+
+    def _sanitize_string(self, dirty_string: str, file_ext: str | None = None) -> str:
+        # macOS and most disks allow 255 bytes per name, and Korean takes 3 per
+        # letter: a credit listing dozens of artists made the folder fail.
+        clean = super()._sanitize_string(dirty_string, file_ext)
+        if len(clean.encode()) <= MAX_NAME_BYTES:
+            return clean
+        ext = file_ext if file_ext and clean.endswith(file_ext) else ""
+        stem = clean[: len(clean) - len(ext)]
+        room = MAX_NAME_BYTES - len(ext.encode()) - len("…".encode())
+        return stem.encode()[:room].decode(errors="ignore").rstrip(" .,&") + "…" + ext
 
     def get_final_path(self, tags, file_extension, playlist_tags):
         if self.playlist_track_template and playlist_tags and playlist_tags.title:
@@ -420,7 +453,7 @@ async def create_apple_music_api(
 ) -> tuple[AppleMusicApi, WrapperApi | None]:
     if settings.use_wrapper:
         try:
-            wrapper_api = await WrapperApi.create(
+            wrapper_api = await WebWrapperApi.create(
                 base_url=settings.wrapper_url,
                 decrypt_host=settings.wrapper_decrypt_host,
                 decrypt_port=settings.wrapper_decrypt_port,

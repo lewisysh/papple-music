@@ -13,6 +13,7 @@ from .config import Settings
 LOGOUT_WAIT_SECS = 45
 # A dialog from Apple that nobody can answer; the wrapper only clicks through sign-in.
 APPLE_DIALOG_RE = re.compile(r'ProtocolDialog id=\d+ title="(.*)" buttons=.*picked_existing_apple_id=no')
+DISPATCH_FAILED_MESSAGE = "Apple이 이 곡 요청을 여러 번 거절했습니다. 잠시 뒤 다시 받아 보세요."
 APPLE_REFUSALS = {
     "device limit": "이 Apple 계정의 기기 등록 한도가 찼습니다. Apple Music 앱의 계정 설정 → 기기 관리에서 안 쓰는 기기를 제거하세요.",
     "more than one device": "이 Apple 계정이 다른 기기에서 재생 중입니다. 다른 기기의 재생을 멈추고 다시 시도하세요.",
@@ -125,9 +126,9 @@ async def explain_error(settings: Settings, message: str) -> str:
     try:
         titles = APPLE_DIALOG_RE.findall(await docker_ctl.logs(settings.wrapper_container, tail=30))
     except ValueError:
-        return message
+        return DISPATCH_FAILED_MESSAGE
     if not titles:
-        return message
+        return DISPATCH_FAILED_MESSAGE
     title = titles[-1]
     for phrase, text in APPLE_REFUSALS.items():
         if phrase in title.lower():

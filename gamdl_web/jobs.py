@@ -384,7 +384,10 @@ class JobManager:
                     self._publish(job)
 
                 if not media.partial and not media.error:
-                    await self._save_playlist_cover(item, downloader, settings, log, cover_done)
+                    try:
+                        await self._save_playlist_cover(item, downloader, settings, log, cover_done)
+                    except Exception as e:
+                        log.warning(f"플레이리스트 커버를 저장하지 못했습니다: {e}")
 
                 converting = (
                     track is not None
@@ -443,34 +446,43 @@ class JobManager:
                     else:
                         job.error = message
                 else:
-                    protected = (
-                        track is not None
-                        and not media.partial
-                        and media_type in {"songs", "library-songs"}
-                        and os.path.exists(item.final_path)
-                        and await asyncio.to_thread(convert.is_protected, item.final_path)
-                    )
-                    if protected:
-                        for leftover in (item.final_path, item.synced_lyrics_path):
-                            if leftover and os.path.exists(leftover):
-                                os.remove(leftover)
-                        log.error(f'오류 "{track.title}": {PROTECTED_MESSAGE}')
-                        track.status = "error"
-                        track.message = PROTECTED_MESSAGE
-                    elif track and not media.partial:
-                        track.path = item.final_path
-                        if media_type in {"songs", "library-songs"} and os.path.exists(item.final_path):
-                            track.quality = await convert.audio_quality(item.final_path, settings.ffmpeg_path)
-                            progress.report("finish")
-                            await self._tag_extras(item, settings, log)
-                            if settings.save_motion_cover:
-                                await self._save_motion(item, settings, log, motion_done)
-                        if converting and os.path.exists(item.final_path):
-                            progress.report("convert")
-                            await self._convert(track, item, settings, log)
-                        if settings.dj_tags and media_type in {"songs", "library-songs"}:
-                            await self._dj_tags(job, track, settings, log)
-                        track.status = "done"
+                    # Tagging, converting and the like: a failure here is this song's,
+                    # not the whole job's.
+                    try:
+                        protected = (
+                            track is not None
+                            and not media.partial
+                            and media_type in {"songs", "library-songs"}
+                            and os.path.exists(item.final_path)
+                            and await asyncio.to_thread(convert.is_protected, item.final_path)
+                        )
+                        if protected:
+                            for leftover in (item.final_path, item.synced_lyrics_path):
+                                if leftover and os.path.exists(leftover):
+                                    os.remove(leftover)
+                            log.error(f'오류 "{track.title}": {PROTECTED_MESSAGE}')
+                            track.status = "error"
+                            track.message = PROTECTED_MESSAGE
+                        elif track and not media.partial:
+                            track.path = item.final_path
+                            if media_type in {"songs", "library-songs"} and os.path.exists(item.final_path):
+                                track.quality = await convert.audio_quality(item.final_path, settings.ffmpeg_path)
+                                progress.report("finish")
+                                await self._tag_extras(item, settings, log)
+                                if settings.save_motion_cover:
+                                    await self._save_motion(item, settings, log, motion_done)
+                            if converting and os.path.exists(item.final_path):
+                                progress.report("convert")
+                                await self._convert(track, item, settings, log)
+                            if settings.dj_tags and media_type in {"songs", "library-songs"}:
+                                await self._dj_tags(job, track, settings, log)
+                            track.status = "done"
+                    except Exception as e:
+                        message = str(e) or type(e).__name__
+                        log.error(f'오류 "{track.title if track else media.media_id}": {message}', exception=traceback.format_exc())
+                        if track:
+                            track.status = "error"
+                            track.message = message
                 if token is not None:
                     progress.reporter.reset(token)
                 if track:
