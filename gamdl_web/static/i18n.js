@@ -680,6 +680,9 @@ const I18N_EN = {
 "Safari와 Mac 앱에서 한글 검색어 입력 후 Enter가 바로 검색돼요": "Korean input now searches with one Enter in Safari and the Mac app",
 // DJ key/BPM
 "DJ용 키·BPM 태그: 기존 파일, GetSongBPM, Deezer에서 가져와 캠블롯·음악 표기·오픈 키로 넣어요": "Key and BPM tags for DJs, from your own files, GetSongBPM and Deezer, in Camelot, musical or Open Key notation",
+"아티스트가 아주 많은 곡도 폴더 이름을 줄여서 받아요": "Songs credited to dozens of artists download with a shortened folder name",
+"한 곡에서 오류가 나도 나머지 곡은 계속 받아요": "One song's error no longer stops the rest of the download",
+"Apple이 가끔 거절하는 곡은 잠시 뒤 자동으로 다시 요청해요": "Songs Apple occasionally refuses are asked for again automatically",
 "사이드바에서 보관함 전체를 앨범별 폴더로 받을 수 있어요": "Download your whole library into album folders from the sidebar",
 "Apple Music에서 연결이 끊긴 보관함 곡을 카탈로그에서 다시 찾아 받아요": "Library songs that lost their Apple Music link are found in the catalog again",
 "플레이리스트 커버가 하위 폴더마다 저장되던 문제를 고쳤어요": "The playlist cover is no longer saved into every subfolder",
