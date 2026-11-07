@@ -18,10 +18,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/lewisysh/papple-music/releases/download/v1.3.4/Papple-Music-1.3.4-arm64.dmg"><img alt="Download for macOS" src="https://img.shields.io/badge/Download%20for%20macOS-v1.3.4%20%C2%B7%20Apple%20Silicon-fa2d48?style=for-the-badge"></a>
+  <a href="https://github.com/lewisysh/papple-music/releases/download/v1.3.5/Papple-Music-1.3.5-arm64.dmg"><img alt="Download for macOS" src="https://img.shields.io/badge/Download%20for%20macOS-v1.3.5%20%C2%B7%20Apple%20Silicon-fa2d48?style=for-the-badge"></a>
 </p>
 
-<h3 align="center"><a href="https://github.com/lewisysh/papple-music/releases/download/v1.3.4/Papple-Music-1.3.4-arm64.dmg">Papple-Music-1.3.4-arm64.dmg</a></h3>
+<h3 align="center"><a href="https://github.com/lewisysh/papple-music/releases/download/v1.3.5/Papple-Music-1.3.5-arm64.dmg">Papple-Music-1.3.5-arm64.dmg</a></h3>
 
 <p align="center">
   <b>Apple Silicon · macOS 12 or later</b> · <a href="#mac-app-easiest">install guide</a> · <a href="https://github.com/lewisysh/papple-music/releases">all releases</a>
@@ -42,7 +42,7 @@ Papple Music is a self-hosted web app that puts a polished, Apple Music–like i
 
 No terminal needed — Python, all libraries and ffmpeg are inside the app.
 
-1. Download **[Papple-Music-1.3.4-arm64.dmg](https://github.com/lewisysh/papple-music/releases/download/v1.3.4/Papple-Music-1.3.4-arm64.dmg)** (Apple Silicon Macs, macOS 12 or later). Older and newer versions are on the [**Releases**](https://github.com/lewisysh/papple-music/releases) page.
+1. Download **[Papple-Music-1.3.5-arm64.dmg](https://github.com/lewisysh/papple-music/releases/download/v1.3.5/Papple-Music-1.3.5-arm64.dmg)** (Apple Silicon Macs, macOS 12 or later). Older and newer versions are on the [**Releases**](https://github.com/lewisysh/papple-music/releases) page.
 2. Open it and drag **Papple Music** into **Applications**.
 3. Open **Papple Music**. It opens in its own window and sits in the Dock like any other app.
 
@@ -269,7 +269,8 @@ Everything important in gamdl can be changed on the Settings page. The file is `
 | Cover | Format (jpg · png · raw), size (up to 10000), save as a file |
 | Lyrics | Save synced lyrics (LRC), embed in tags |
 | Tags | Choose exactly which tags are written (cover included) |
-| Music videos | Max resolution, codec, container |
+| Music videos | Max resolution, codec, container (`mp4` or `m4v`) |
+| DRM devices | Choose a PlayReady `.prd` or Widevine `.wvd` file in Finder; it is checked and copied into the app's data folder. Apple keys music videos above 1080p for hardware DRM only, so 4K needs a PlayReady SL3000 `.prd`. Without one, picking 4K downloads the video at 1080p |
 | Wrapper | Use by default, HTTP / decrypt addresses, container name |
 
 <details>
