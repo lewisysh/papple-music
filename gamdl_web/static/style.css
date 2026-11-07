@@ -1497,3 +1497,11 @@ body.panel-open .content { padding-right: 380px; }
 .qtag.hires { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .t-title .qtag { height: 16px; margin-left: 6px; font-size: 10.5px; vertical-align: 1px; }
 .t-title .qtag svg.mark { height: 9px; }
+
+/* DRM device file picker in Settings */
+.device-pick { display: flex; gap: 8px; align-items: center; }
+.device-pick input[type=text] { flex: 1; min-width: 0; }
+.device-pick .btn { flex: none; }
+.device-info:empty { display: none; }
+.device-info.warn { color: var(--orange, var(--red)); }
+.device-pick [hidden] { display: none; }

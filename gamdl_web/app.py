@@ -329,6 +329,85 @@ async def upload_cookies(request: Request, file: UploadFile = File(...)):
     return _cookies_info(path)
 
 
+# DRM device files picked in Settings are copied here, so moving the original
+# doesn't break them.
+DRM_DIR = DATA_DIR / "drm"
+DRM_DEVICES = {"prd": ("prd_path", "playready.prd"), "wvd": ("wvd_path", "widevine.wvd")}
+
+
+def _drm_kind(kind: str) -> tuple[str, str]:
+    if kind not in DRM_DEVICES:
+        raise HTTPException(404, "알 수 없는 DRM 기기 종류")
+    return DRM_DEVICES[kind]
+
+
+def _drm_info(kind: str, path: Path) -> dict[str, Any]:
+    """What a device file is: {"system", "level", "hardware"}. Raises ValueError
+    for a file that isn't one."""
+    try:
+        if kind == "prd":
+            from pyplayready.device import Device as PlayReadyDevice
+
+            level = int(PlayReadyDevice.load(path).security_level)
+            return {"system": "PlayReady", "level": f"SL{level}", "hardware": level >= 3000}
+        from pywidevine.device import Device as WidevineDevice
+
+        level = int(WidevineDevice.load(path).security_level)
+        return {"system": "Widevine", "level": f"L{level}", "hardware": level == 1}
+    except Exception as e:
+        raise ValueError(f"{'PlayReady .prd' if kind == 'prd' else 'Widevine .wvd'} 파일이 아닙니다") from e
+
+
+@app.get("/api/drm/{kind}")
+async def get_drm_device(request: Request, kind: str):
+    key, _ = _drm_kind(kind)
+    value = getattr(_state(request).store.get(), key)
+    if not value:
+        return {"path": ""}
+    path = Path(value).expanduser()
+    if not path.is_file():
+        return {"path": value, "error": "파일이 없습니다"}
+    try:
+        return {"path": value, **_drm_info(kind, path)}
+    except ValueError as e:
+        return {"path": value, "error": str(e)}
+
+
+@app.post("/api/drm/{kind}")
+async def upload_drm_device(request: Request, kind: str, file: UploadFile = File(...)):
+    key, name = _drm_kind(kind)
+    content = await file.read(1_000_001)
+    if len(content) > 1_000_000:
+        raise HTTPException(400, "파일이 너무 큽니다")
+    DRM_DIR.mkdir(parents=True, exist_ok=True)
+    os.chmod(DRM_DIR, 0o700)
+    path = DRM_DIR / name
+    tmp_path = path.with_suffix(".upload")
+    tmp_path.write_bytes(content)
+    os.chmod(tmp_path, 0o600)
+    try:
+        info = _drm_info(kind, tmp_path)
+    except ValueError as e:
+        tmp_path.unlink(missing_ok=True)
+        raise HTTPException(400, str(e))
+    tmp_path.replace(path)
+    settings = _state(request).store.update({key: str(path)})
+    return {"path": str(path), **info, "settings": settings.model_dump()}
+
+
+@app.delete("/api/drm/{kind}")
+async def remove_drm_device(request: Request, kind: str):
+    key, _ = _drm_kind(kind)
+    store = _state(request).store
+    value = getattr(store.get(), key)
+    if value:
+        path = Path(value).expanduser()
+        # Only the copy made here; a file the user pointed at elsewhere is theirs.
+        if path.resolve().parent == DRM_DIR.resolve():
+            path.unlink(missing_ok=True)
+    return {"settings": store.update({key: ""}).model_dump()}
+
+
 class TokenRequest(BaseModel):
     token: str
 

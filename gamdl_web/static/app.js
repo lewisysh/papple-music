@@ -943,8 +943,15 @@ function optionRow(opt, i, checked) {
     </li>`;
 }
 
+// Apple gives the keys above 1080p to hardware DRM only, so 4K needs a .wvd/.prd of one.
+const VIDEO_4K_NOTE = "4K는 Apple이 하드웨어 DRM 기기(Widevine L1·PlayReady SL3000)에만 키를 줘서 1080p까지 받을 수 있습니다.";
+
+function hardwareDrm() {
+  return Boolean(state.settings?.wvd_path || state.settings?.prd_path);
+}
+
 function videoOptions(it) {
-  const res = ["2160p", "1080p", "720p", "480p"].filter((r) => r !== "2160p" || (it.traits || []).includes("4k"));
+  const res = ["2160p", "1080p", "720p", "480p"].filter((r) => r !== "2160p" || ((it.traits || []).includes("4k") && hardwareDrm()));
   return res.map((r) => ({
     name: r === "2160p" ? "4K (2160p)" : r,
     detail: r === "2160p" ? "H.265 (HEVC)" : "H.264",
@@ -1013,7 +1020,10 @@ async function openDownloadSheet(it) {
   sheet.saveas.textContent = fmt && fmt !== "original" ? `저장 형식: ${OUTPUT_NAMES[fmt]}` : "저장 형식: m4a";
   sheet.root.classList.remove("hidden");
 
-  if (it.type === "music-videos") { renderSheetOptions(videoOptions(it)); return; }
+  if (it.type === "music-videos") {
+    renderSheetOptions(videoOptions(it), (it.traits || []).includes("4k") && !hardwareDrm() ? VIDEO_4K_NOTE : "");
+    return;
+  }
   if (!["songs", "albums", "playlists"].includes(it.type) || !it.id) { renderSheetOptions(familyOptions()); return; }
 
   sheet.list.innerHTML = `<li class="dl-loading"><span class="spinner"></span>제공되는 음질을 확인하는 중…</li>`;
@@ -3740,7 +3750,7 @@ const SETTINGS_SCHEMA = [
     { key: "use_album_date", label: "곡 날짜에 앨범 발매일 사용", type: "bool" },
   ] },
   { title: "뮤직비디오 · 영상", fields: [
-    { key: "music_video_resolution", label: "최대 해상도", type: "select", options: "music_video_resolution", help: "1440p 이상은 H.265 전용" },
+    { key: "music_video_resolution", label: "최대 해상도", type: "select", options: "music_video_resolution", help: "1440p 이상은 H.265 전용이고, 하드웨어 DRM 기기(.wvd/.prd)가 있어야 받을 수 있습니다" },
     { key: "music_video_codec_priority", label: "코덱 우선순위", type: "priority", options: "music_video_codec" },
     { key: "music_video_remux_format", label: "컨테이너", type: "select", options: "music_video_remux_format" },
     { key: "uploaded_video_quality", label: "포스트 영상 화질", type: "select", options: "uploaded_video_quality" },
@@ -3793,8 +3803,8 @@ const SETTINGS_SCHEMA = [
     { key: "drm_backend", label: "DRM 백엔드", type: "select", options: "drm_backend" },
     { key: "ffmpeg_path", label: "FFmpeg 경로", type: "text" },
     { key: "nm3u8dlre_path", label: "N_m3u8DL-RE 경로", type: "text" },
-    { key: "wvd_path", label: ".wvd 파일 경로", type: "text", wide: true },
-    { key: "prd_path", label: ".prd 파일 경로", type: "text", wide: true },
+    { key: "wvd_path", label: "Widevine 기기 (.wvd)", type: "device", kind: "wvd", help: "비워 두면 앱에 들어 있는 기기를 씁니다" },
+    { key: "prd_path", label: "PlayReady 기기 (.prd)", type: "device", kind: "prd", help: "SL3000 기기를 넣어 두면 Apple이 Widevine에 주지 않는 4K 영상 키를 이걸로 받습니다" },
   ] },
 ];
 
@@ -3859,6 +3869,20 @@ function renderField(f, s) {
           <details class="tpl-vars"><summary>사용 가능한 변수</summary><div class="chips">${chips}</div></details>
         </div>`;
     }
+    case "device": {
+      const value = s[f.key] || "";
+      // Not a <label>: it holds buttons. The file is copied into the app's data folder.
+      return `
+        <div class="row stack device" data-device="${f.kind}">${label}
+          <div class="device-pick">
+            <input type="text" id="${id}" data-key="${f.key}" value="${esc(value)}" readonly placeholder="선택한 파일 없음">
+            <button type="button" class="btn btn-gray" data-device-pick>파일 선택…</button>
+            <button type="button" class="btn btn-gray destructive" data-device-clear ${value ? "" : "hidden"}>지우기</button>
+            <input type="file" data-device-file accept=".${f.kind}" hidden>
+          </div>
+          <small class="device-info"></small>
+        </div>`;
+    }
     default: {
       const input = `<input type="${f.type}" id="${id}" data-key="${f.key}" ${f.nullable ? 'data-nullable="1" placeholder="없음"' : ""} value="${esc(s[f.key] ?? "")}" spellcheck="false">`;
       return `<label class="row${f.wide ? " stack" : ""}">${label}${input}</label>`;
@@ -3874,6 +3898,10 @@ function renderSettings() {
     ${section.help ? `<p class="group-foot">${esc(section.help)}</p>` : ""}`).join("");
   SETTINGS_SCHEMA.flatMap((sec) => sec.fields).filter((f) => f.type === "priority")
     .forEach((f) => renderPriority($(`#set-${f.key}`), f, [...s[f.key]]));
+  $$("[data-device]", $("#settings-form")).forEach(async (row) => {
+    if (!$("input[data-key]", row).value) return;
+    showDevice(row, await api(`/api/drm/${row.dataset.device}`).catch(() => ({})));
+  });
   state.dirty = false;
   updateSavebar();
 }
@@ -3904,7 +3932,37 @@ function updateSavebar() {
   $("#savebar").setAttribute("aria-hidden", !visible);
 }
 
-$("#settings-form").addEventListener("input", markDirty);
+// Picking a device file saves at once, so it doesn't make the form dirty.
+$("#settings-form").addEventListener("input", (e) => { if (!e.target.matches("[data-device-file]")) markDirty(); });
+
+function showDevice(row, info) {
+  const input = $("input[data-key]", row);
+  if ("path" in info) input.value = info.path || "";
+  $("[data-device-clear]", row).hidden = !input.value;
+  const note = $(".device-info", row);
+  note.className = `device-info${info.error || (info.level && !info.hardware) ? " warn" : ""}`;
+  note.textContent = !input.value ? ""
+    : info.error ? info.error
+    : info.level ? `${info.system} ${info.level}${info.hardware ? " · 하드웨어 DRM" : " · 4K 키는 받지 못합니다"}`
+    : "";
+}
+
+$("#settings-form").addEventListener("change", async (e) => {
+  const input = e.target.closest("[data-device-file]");
+  if (!input?.files.length) return;
+  const row = input.closest("[data-device]");
+  const form = new FormData();
+  form.append("file", input.files[0]);
+  input.value = "";
+  try {
+    const r = await api(`/api/drm/${row.dataset.device}`, { method: "POST", form });
+    state.settings = r.settings;
+    showDevice(row, r);
+    toast(`${r.system} ${r.level} 기기를 등록했습니다`, "ok");
+  } catch (err) {
+    toast(err.message, "err");
+  }
+});
 $("#settings-form").addEventListener("submit", (e) => e.preventDefault());
 $("#settings-form").addEventListener("input", (e) => {
   const row = e.target.closest("[data-tpl]");
@@ -3916,7 +3974,24 @@ $("#settings-form").addEventListener("input", (e) => {
 $("#settings-form").addEventListener("pointerdown", (e) => {
   if (e.target.closest(".tpl-var")) e.preventDefault();
 });
-$("#settings-form").addEventListener("click", (e) => {
+$("#settings-form").addEventListener("click", async (e) => {
+  const pick = e.target.closest("[data-device-pick]");
+  if (pick) {
+    $("[data-device-file]", pick.closest("[data-device]")).click();
+    return;
+  }
+  const clear = e.target.closest("[data-device-clear]");
+  if (clear) {
+    const row = clear.closest("[data-device]");
+    try {
+      state.settings = (await api(`/api/drm/${row.dataset.device}`, { method: "DELETE" })).settings;
+      showDevice(row, { path: "" });
+      toast("기기 파일을 지웠습니다", "ok");
+    } catch (err) {
+      toast(err.message, "err");
+    }
+    return;
+  }
   const chip = e.target.closest(".tpl-var");
   if (chip) {
     const input = $("input", chip.closest("[data-tpl]"));

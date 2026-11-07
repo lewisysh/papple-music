@@ -18,6 +18,7 @@ APPLE_REFUSALS = {
     "device limit": "이 Apple 계정의 기기 등록 한도가 찼습니다. Apple Music 앱의 계정 설정 → 기기 관리에서 안 쓰는 기기를 제거하세요.",
     "more than one device": "이 Apple 계정이 다른 기기에서 재생 중입니다. 다른 기기의 재생을 멈추고 다시 시도하세요.",
     "no longer available": "이 Apple 계정의 스토어에서는 받을 수 없는 곡입니다.",
+    '"errorcode":-42604': "Apple이 이 화질의 영상 키를 하드웨어 DRM 기기(Widevine L1·PlayReady SL3000)에만 줍니다. 1080p 이하로 받아 주세요.",
 }
 
 # Never forward Apple session tokens to the browser.

@@ -477,6 +477,9 @@ class JobManager:
                             if settings.dj_tags and media_type in {"songs", "library-songs"}:
                                 await self._dj_tags(job, track, settings, log)
                             track.status = "done"
+                            note = getattr(media.stream_info, "resolution_note", None)
+                            if note:
+                                track.message = note
                     except Exception as e:
                         message = str(e) or type(e).__name__
                         log.error(f'오류 "{track.title if track else media.media_id}": {message}', exception=traceback.format_exc())

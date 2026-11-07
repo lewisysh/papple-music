@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import os
 import re
 import time
@@ -9,6 +10,7 @@ from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 import httpx
+import m3u8
 import structlog
 from gamdl.api import AppleMusicApi, GamdlApiResponseError, WrapperApi
 from gamdl.downloader import (
@@ -19,7 +21,8 @@ from gamdl.downloader import (
     AppleMusicUploadedVideoDownloader,
 )
 from gamdl.downloader.enums import DownloadMode, RemuxFormatMusicVideo
-from gamdl.interface.types import Cover
+from gamdl.interface.exceptions import GamdlInterfaceDecryptionNotAvailableError
+from gamdl.interface.types import Cover, DecryptionKeyAv, MediaFileFormat, StreamInfo
 from gamdl.interface import (
     AppleMusicBaseInterface,
     AppleMusicInterface,
@@ -430,7 +433,131 @@ class WebSongDownloader(AppleMusicSongDownloader):
         return await super().stage(*args, **kwargs)
 
 
+# Apple keys music videos above 1080p for hardware DRM only (Widevine L1,
+# PlayReady SL3000) and answers a software CDM's license request with this.
+HD_KEY_REFUSED = '"errorCode":-42604'
+
+
+class WebMusicVideoInterface(AppleMusicMusicVideoInterface):
+    """When Apple won't give the key for the resolution picked, asks the PlayReady
+    device (.prd) if one is set, then steps down to the next resolution instead of
+    failing the video."""
+
+    def __init__(self, *args, hd_base: AppleMusicBaseInterface | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.hd_base = hd_base
+
+    async def _get_stream_info(self, media_id, m3u8_master_url, codec):
+        stream_info = await super()._get_stream_info(media_id, m3u8_master_url, codec)
+        if stream_info:
+            stream_info.master_url = m3u8_master_url
+        return stream_info
+
+    async def _lower_video_track(self, stream_info) -> StreamInfo | None:
+        """The best variant of the same codec below the current resolution."""
+        master_url = getattr(stream_info, "master_url", None)
+        video = stream_info.video_track
+        if not master_url or not video.codec or not video.height:
+            return None
+        master = m3u8.loads((await self.base.get_response(master_url)).text)
+        lower = [
+            p for p in master.playlists
+            if p.stream_info.codecs
+            and p.stream_info.codecs.startswith(video.codec[:4])
+            and p.stream_info.resolution
+            and p.stream_info.resolution[-1] < video.height
+        ]
+        if not lower:
+            return None
+        best = max(lower, key=lambda p: (p.stream_info.resolution[-1], p.stream_info.bandwidth or 0))
+        track = StreamInfo()
+        track.stream_url = best.uri
+        track.codec = best.stream_info.codecs
+        track.width, track.height = best.stream_info.resolution
+        playlist = m3u8.loads((await self.base.get_response(track.stream_url)).text)
+        track.widevine_pssh = self._get_widevine_pssh(playlist)
+        track.fairplay_key = self._get_fairplay_key(playlist)
+        track.playready_pssh = self._get_playready_pssh(playlist)
+        return track
+
+    async def _track_key(self, track: StreamInfo, media_id: str):
+        """The key for one track and the base that got it: the usual DRM first,
+        the PlayReady device only when Apple refuses the usual one this key."""
+        refused = None
+        for base in (self.base, self.hd_base):
+            pssh = base.get_drm_pssh(track) if base else None
+            if not pssh:
+                continue
+            try:
+                return await base.get_decryption_key(pssh, media_id), base
+            except GamdlApiResponseError as e:
+                if HD_KEY_REFUSED not in str(e):
+                    if base is self.base:
+                        raise
+                    logger.warning(f"PlayReady(.prd)로 키를 받지 못했습니다: {e}")
+                refused = refused or e
+        if refused:
+            raise refused
+        raise GamdlInterfaceDecryptionNotAvailableError(media_id)
+
+    async def get_decryption_key(self, stream_info):
+        wanted = stream_info.video_track.height
+        while True:
+            try:
+                video, video_base = await self._track_key(stream_info.video_track, stream_info.media_id)
+                break
+            except GamdlApiResponseError as e:
+                if HD_KEY_REFUSED not in str(e):
+                    raise
+                lower = await self._lower_video_track(stream_info)
+                if not lower:
+                    raise
+                stream_info.video_track = lower
+        audio, _ = await self._track_key(stream_info.audio_track, stream_info.media_id)
+
+        got = stream_info.video_track.height
+        if video_base is not self.base:
+            logger.info(f"{got}p 영상 키를 PlayReady(.prd)로 받았습니다")
+        if wanted and got and got < wanted:
+            stream_info.resolution_note = (
+                f"{got}p로 받음 · {wanted}p는 Apple이 하드웨어 DRM 기기에만 키를 줍니다"
+            )
+            logger.warning(
+                f"{wanted}p 영상은 Apple이 하드웨어 DRM 기기(Widevine L1·PlayReady SL3000)에만 "
+                f"키를 줘서 {got}p로 받습니다"
+            )
+        return DecryptionKeyAv(video_track=video, audio_track=audio)
+
+
+def _hd_base(settings: Settings, base: AppleMusicBaseInterface) -> AppleMusicBaseInterface | None:
+    """A copy of the base that uses the PlayReady device, for keys Apple gives
+    hardware DRM only. None when no .prd is set or PlayReady is already in use."""
+    if not settings.prd_path or DrmBackend(settings.drm_backend) == DrmBackend.PLAYREADY:
+        return None
+    try:
+        cdm = AppleMusicBaseInterface.create_cdm(
+            prd_path=str(Path(settings.prd_path).expanduser()),
+            drm_backend=DrmBackend.PLAYREADY,
+        )
+    except Exception as e:
+        logger.warning(f".prd 파일을 읽지 못해 1080p를 넘는 영상은 받을 수 없습니다: {e}")
+        return None
+    hd = copy.copy(base)
+    hd.cdm = cdm
+    hd.drm_backend = DrmBackend.PLAYREADY
+    return hd
+
+
 class WebMusicVideoDownloader(AppleMusicMusicVideoDownloader):
+    async def get_download_item(self, media):
+        # gamdl keeps the container setting but never uses it: the extension
+        # follows the codec, so H.264 videos always came out as .m4v. MP4 now
+        # means .mp4; M4V keeps gamdl's choice (.mp4 for HEVC and Dolby audio,
+        # which the M4V brand can't hold).
+        if self.remux_format == RemuxFormatMusicVideo.MP4 and media.stream_info:
+            media.stream_info.file_format = MediaFileFormat.MP4
+        return await super().get_download_item(media)
+
     async def stage(self, *args, **kwargs):
         progress.report("decrypt")
         return await super().stage(*args, **kwargs)
@@ -526,7 +653,7 @@ async def create_session(settings: Settings, prompts: WebPrompts) -> Session:
         cover_size=settings.cover_size,
         wvd_path=settings.wvd_path or None,
         wrapper_api=wrapper_api,
-        prd_path=settings.prd_path or None,
+        prd_path=str(Path(settings.prd_path).expanduser()) if settings.prd_path else None,
         drm_backend=DrmBackend(settings.drm_backend),
     )
     song_interface = WebSongInterface(
@@ -537,8 +664,9 @@ async def create_session(settings: Settings, prompts: WebPrompts) -> Session:
         skip_stream_info=settings.synced_lyrics_only,
         ask_codec_function=prompts.ask_song_codec,
     )
-    music_video_interface = AppleMusicMusicVideoInterface(
+    music_video_interface = WebMusicVideoInterface(
         base=base_interface,
+        hd_base=_hd_base(settings, base_interface),
         resolution=MusicVideoResolution(settings.music_video_resolution),
         codec_priority=[MusicVideoCodec(c) for c in settings.music_video_codec_priority],
         ask_video_codec_function=prompts.ask_music_video_video_codec,
