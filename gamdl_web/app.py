@@ -663,10 +663,13 @@ class PlaylistAdd(BaseModel):
 async def add_to_playlist(request: Request, playlist_id: str, body: PlaylistAdd):
     if not CATALOG_ID_RE.fullmatch(playlist_id) or not body.song_id.isdigit():
         raise HTTPException(400, "잘못된 요청입니다")
-    status = await _state(request).search.post(
-        f"/v1/me/library/playlists/{playlist_id}/tracks",
-        {"data": [{"id": body.song_id, "type": "songs"}]},
-    )
+    try:
+        status = await _state(request).search.post(
+            f"/v1/me/library/playlists/{playlist_id}/tracks",
+            {"data": [{"id": body.song_id, "type": "songs"}]},
+        )
+    except SearchError as e:
+        raise HTTPException(502, str(e))
     if status >= 300:
         raise HTTPException(502, f"플레이리스트에 추가하지 못했습니다 (HTTP {status})")
     return {"ok": True}
@@ -929,19 +932,30 @@ async def wrapper_status(request: Request):
 
 @app.post("/api/wrapper/login")
 async def wrapper_login(request: Request, body: LoginRequest):
-    settings = _state(request).store.get()
-    return _wrapper_response(await wrapper.login(settings, body.username.strip(), body.password))
+    state = _state(request)
+    result = await wrapper.login(state.store.get(), body.username.strip(), body.password)
+    if result[0] == 200:
+        # Search and the profile follow the Apple ID now signed in.
+        state.search.forget_session()
+    return _wrapper_response(result)
 
 
 @app.post("/api/wrapper/2fa")
 async def wrapper_2fa(request: Request, body: TwoFactorRequest):
-    settings = _state(request).store.get()
-    return _wrapper_response(await wrapper.login_2fa(settings, body.code.strip()))
+    state = _state(request)
+    result = await wrapper.login_2fa(state.store.get(), body.code.strip())
+    if result[0] < 300:
+        state.search.forget_session()
+    return _wrapper_response(result)
 
 
 @app.post("/api/wrapper/logout")
 async def wrapper_logout(request: Request):
-    return _wrapper_response(await wrapper.logout(_state(request).store.get()))
+    state = _state(request)
+    result = await wrapper.logout(state.store.get())
+    # Even a sign-out that failed halfway may have cleared the account.
+    state.search.forget_session()
+    return _wrapper_response(result)
 
 
 # ---- wrapper setup wizard ---------------------------------------------------

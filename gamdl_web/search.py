@@ -28,6 +28,9 @@ ANONYMOUS_RETRY = 15
 # After the account's token is rate limited (429), catalog reads go through the
 # public web-player token for this long; it has its own, separate quota.
 THROTTLE_COOLDOWN = 5 * 60
+# A replaced session's clients are closed this much later, so requests already
+# on them (15 s timeout) finish instead of failing.
+CLIENT_GRACE = 60
 LIBRARY_SONG_LIMIT = 50_000
 
 
@@ -171,12 +174,12 @@ class SearchService:
         self._client: httpx.AsyncClient | None = None
         self._key: tuple | None = None
         self._created = 0.0
-        self._suggest_cache: dict[str, dict[str, Any]] = {}
+        self._suggest_cache: dict[tuple, dict[str, Any]] = {}
         self._anonymous = False
         self._web: httpx.AsyncClient | None = None
         self._web_created = 0.0
         self._throttled_until = 0.0
-        self._browse: tuple[float, list] | None = None
+        self._browse: tuple[float, tuple, list] | None = None
         self._lock = asyncio.Lock()
 
     @staticmethod
@@ -200,26 +203,50 @@ class SearchService:
                 and time.time() - self._created < (ANONYMOUS_RETRY if self._anonymous else SESSION_TTL)
             ):
                 return self._api
-            await self._close_api()
             try:
-                api, wrapper_api = await create_apple_music_api(settings)
-                if wrapper_api:
-                    await wrapper_api.client.aclose()
-                self._anonymous = False
-            except SetupError as e:
-                # Searching the catalog needs no account; downloads still will.
-                logger.info(f"계정 없이 검색합니다: {e}")
-                api = await AppleMusicApi.create(
-                    storefront=ANONYMOUS_STOREFRONT, language=settings.language
-                )
-                self._anonymous = True
-            self._api, self._key, self._created = api, key, time.time()
+                try:
+                    api, wrapper_api = await create_apple_music_api(settings)
+                    if wrapper_api:
+                        await wrapper_api.client.aclose()
+                    anonymous = False
+                except SetupError as e:
+                    # Searching the catalog needs no account; downloads still will.
+                    logger.info(f"계정 없이 검색합니다: {e}")
+                    api = await AppleMusicApi.create(
+                        storefront=ANONYMOUS_STOREFRONT, language=settings.language
+                    )
+                    anonymous = True
+            except Exception as e:
+                # Offline, or Apple's token page failed: an error the page can show.
+                raise SearchError(f"Apple Music에 연결하지 못했습니다 ({str(e) or type(e).__name__})") from e
+            # Requests still running on the old session keep its clients a while.
+            self._close_later(self._client, self._api.client if self._api else None)
+            self._api, self._key, self._created, self._anonymous = api, key, time.time(), anonymous
             self._client = httpx.AsyncClient(headers=dict(api.client.headers), timeout=15)
             return api
 
+    @staticmethod
+    def _close_later(*clients: httpx.AsyncClient | None) -> None:
+        """Close replaced clients once the requests already using them are done."""
+        clients = tuple(c for c in clients if c is not None)
+        if not clients:
+            return
+
+        async def close() -> None:
+            for client in clients:
+                await client.aclose()
+
+        asyncio.get_running_loop().call_later(CLIENT_GRACE, lambda: asyncio.ensure_future(close()))
+
+    def forget_session(self) -> None:
+        """Build the next session from scratch, e.g. after the wrapper's Apple ID changed."""
+        self._key = None
+
     async def suggest(self, term: str) -> dict[str, Any]:
         """Type-ahead: suggested search terms plus top matches, like the Music app."""
-        key = term.casefold()
+        # Per storefront and language: signing in or switching language changes them.
+        api = await self._session()
+        key = (api.storefront, self.store.get().language, term.casefold())
         if key in self._suggest_cache:
             return self._suggest_cache[key]
         raw = await self._get(
@@ -279,14 +306,17 @@ class SearchService:
 
     async def _web_client(self) -> httpx.AsyncClient:
         """A client on the public web-player token (no account), for catalog reads."""
-        if self._web is None or time.time() - self._web_created > SESSION_TTL:
-            api = await AppleMusicApi.create(storefront=ANONYMOUS_STOREFRONT, language=self.store.get().language)
-            headers = dict(api.client.headers)
-            await api.client.aclose()
-            if self._web is not None:
-                await self._web.aclose()
-            self._web, self._web_created = httpx.AsyncClient(headers=headers, timeout=15), time.time()
-        return self._web
+        async with self._lock:
+            if self._web is None or time.time() - self._web_created > SESSION_TTL:
+                try:
+                    api = await AppleMusicApi.create(storefront=ANONYMOUS_STOREFRONT, language=self.store.get().language)
+                except Exception as e:
+                    raise SearchError(f"Apple Music에 연결하지 못했습니다 ({str(e) or type(e).__name__})") from e
+                headers = dict(api.client.headers)
+                await api.client.aclose()
+                self._close_later(self._web)
+                self._web, self._web_created = httpx.AsyncClient(headers=headers, timeout=15), time.time()
+            return self._web
 
     async def _get(self, uri: str, params: dict | None = None, missing_ok: bool = False) -> dict:
         """GET an AMP API path; "{storefront}" in it is filled from the session."""
@@ -364,8 +394,10 @@ class SearchService:
         return None
 
     async def browse(self) -> list[dict]:
-        if self._browse and time.time() - self._browse[0] < BROWSE_TTL:
-            return self._browse[1]
+        api = await self._session()
+        scope = (api.storefront, self.store.get().language)
+        if self._browse and self._browse[1] == scope and time.time() - self._browse[0] < BROWSE_TTL:
+            return self._browse[2]
         raw = await self._get(
             "/v1/recommendations/{storefront}",
             {"name": "search-landing", "platform": "web", "extend": "editorialArtwork", "l": self.store.get().language},
@@ -386,7 +418,7 @@ class SearchService:
                     "color": art.get("bgColor"),
                     "url": a.get("url"),
                 })
-        self._browse = (time.time(), tiles)
+        self._browse = (time.time(), scope, tiles)
         return tiles
 
     async def curator(self, curator_id: str) -> dict[str, Any]:
@@ -426,9 +458,8 @@ class SearchService:
         }
 
     async def refresh_account(self) -> None:
-        """Retry signing in now if the session was built without an account."""
-        if self._anonymous or self._api is None:
-            await self._session(fresh=True)
+        """Rebuild the session now: signed in, signed out or another Apple ID."""
+        await self._session(fresh=True)
 
     async def profile(self) -> dict[str, Any] | None:
         await self._session()
@@ -607,9 +638,12 @@ class SearchService:
 
     async def post(self, uri: str, body: dict) -> int:
         await self._session()
-        response = await self._client.post(
-            APPLE_MUSIC_AMP_API_URL + uri.format(storefront=self._api.storefront), json=body
-        )
+        try:
+            response = await self._client.post(
+                APPLE_MUSIC_AMP_API_URL + uri.format(storefront=self._api.storefront), json=body
+            )
+        except httpx.HTTPError as e:
+            raise SearchError(f"Apple Music에 연결하지 못했습니다 ({type(e).__name__})") from e
         return response.status_code
 
     async def warm(self) -> None:

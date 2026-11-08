@@ -12,7 +12,7 @@ import structlog
 from . import convert, wrapper
 from .config import DATA_DIR, SettingsStore
 from .prompts import WebPrompts
-from .runner import Session, create_session
+from .runner import Session, SetupError, create_session
 
 logger = structlog.get_logger("gamdl_web.stream")
 
@@ -139,6 +139,14 @@ class StreamService:
         if session:
             await session.close()
 
+    def _retire(self, quality: str, session: Session) -> None:
+        """Stop handing out a session that failed. Other downloads may still be
+        using it, so it is closed later, like a replaced one."""
+        current, _ = self._sessions.get(quality, (None, 0.0))
+        if current is session:
+            del self._sessions[quality]
+            asyncio.get_running_loop().call_later(120, lambda: asyncio.ensure_future(session.close()))
+
     async def _download(self, song_id: str, quality: str) -> Path:
         video = quality == "video"
         async with self._slots[quality]:
@@ -146,7 +154,11 @@ class StreamService:
                 return path
             target = CACHE_DIR / quality / f"{song_id}.{'mp4' if video else 'm4a'}"
             for attempt in range(2):
-                session = await self._get_session(quality)
+                try:
+                    session = await self._get_session(quality)
+                except SetupError as e:
+                    # No cookies, wrapper signed out, no subscription: say which.
+                    raise StreamError(str(e)) from e
                 kind = "music-video" if video else "song"
                 url = f"https://music.apple.com/{session.apple_music_api.storefront}/{kind}/{song_id}"
                 try:
@@ -159,7 +171,7 @@ class StreamService:
                     break
                 except Exception as e:
                     # A stale token is the usual cause; retry once with a new session.
-                    await self._drop_session(quality)
+                    self._retire(quality, session)
                     if attempt:
                         raise StreamError(await wrapper.explain_error(self.store.get(), str(e) or type(e).__name__)) from e
             if not target.exists():
@@ -220,6 +232,10 @@ class StreamService:
         return task
 
     async def get(self, song_id: str, quality: str = "aac") -> Path:
+        # A download still running may have left a file that isn't ready yet
+        # (a lossless .m4a being turned into FLAC): wait for it instead.
+        if task := self._pending.get(f"{quality}:{song_id}"):
+            return await asyncio.shield(task)
         if path := self.cached(song_id, quality):
             os.utime(path)
             return path

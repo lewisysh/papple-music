@@ -203,7 +203,11 @@ def main() -> None:
 
         from .app import app as web_app
 
-        server = uvicorn.Server(uvicorn.Config(web_app, host="127.0.0.1", port=port, log_level="warning"))
+        # The page's event stream never ends by itself: without a time limit the
+        # server waits for it forever on quit and never stops running jobs.
+        server = uvicorn.Server(uvicorn.Config(
+            web_app, host="127.0.0.1", port=port, log_level="warning", timeout_graceful_shutdown=2
+        ))
         thread = threading.Thread(target=server.run, name="server", daemon=True)
         thread.start()
 
@@ -242,7 +246,8 @@ def main() -> None:
         def applicationShouldTerminate_(self, _app) -> int:
             if server is not None:
                 server.should_exit = True
-                thread.join(timeout=5)
+                # 2 s for open requests, then the jobs are stopped and sessions closed.
+                thread.join(timeout=10)
             return NSTerminateNow
 
         # ---- menu actions

@@ -91,6 +91,18 @@ async def action(container: str, name: str) -> tuple[bool, str]:
     return code == 0, out.strip()
 
 
+async def remove_unstarted(container: str) -> bool:
+    """Remove a container that was created but never started, as a `docker run`
+    whose start failed (e.g. a port already in use) leaves behind. Anything that
+    is or was running stays; plain `rm` (no -f) refuses a running one anyway."""
+    _check_name(container)
+    code, out = await _run("inspect", "--format", "{{.State.Status}}", container, timeout=10)
+    if code != 0 or out.strip().splitlines()[-1:] != ["created"]:
+        return False
+    code, _ = await _run("rm", container, timeout=30)
+    return code == 0
+
+
 async def clear_session(container: str) -> tuple[bool, str]:
     _check_name(container)
     code, out = await _run("exec", container, "sh", "-c", f'rm -f "{SESSION_DIR}"/*')

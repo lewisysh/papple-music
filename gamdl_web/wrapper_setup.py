@@ -274,7 +274,10 @@ class WrapperSetup:
             docker = await docker_ctl.status(settings.wrapper_container)
             if not docker["available"] or not docker["daemon"]:
                 raise SetupError("Docker가 실행 중이 아닙니다. OrbStack 또는 Docker Desktop을 켜세요.")
-            if docker["exists"]:
+            # One left "created" by a failed start never ran, so it can be replaced.
+            if docker["exists"] and not (
+                docker["state"] == "created" and await docker_ctl.remove_unstarted(settings.wrapper_container)
+            ):
                 raise SetupError(f"'{settings.wrapper_container}' 컨테이너가 이미 있습니다. Docker 메뉴에서 시작하세요.")
             apk = await self.find_apk()
             if not apk or not apk["ok"]:
@@ -420,6 +423,11 @@ class WrapperSetup:
         ]
         code, out = await docker_ctl._run(*args, timeout=120)
         if code != 0:
+            # A start that failed (e.g. the port is taken) leaves the container
+            # behind, which would block the next try. After a timeout Docker may
+            # still be starting it, so leave it alone then.
+            if code != 124:
+                await docker_ctl.remove_unstarted(settings.wrapper_container)
             raise SetupError(f"컨테이너를 시작하지 못했습니다: {out.strip()[-300:]}")
 
     async def _wait_healthy(self, wrapper_url: str) -> None:

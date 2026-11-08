@@ -36,7 +36,11 @@ def main() -> None:
         url = f"http://{'127.0.0.1' if args.host in {'0.0.0.0', '::'} else args.host}:{args.port}"
         threading.Timer(1.5, webbrowser.open, args=(url,)).start()
 
-    uvicorn.run("gamdl_web.app:app", host=args.host, port=args.port, log_level="warning")
+    # The page's event stream never ends by itself, so cap the wait on Ctrl+C or
+    # `docker stop`; after it, running jobs are stopped cleanly.
+    uvicorn.run(
+        "gamdl_web.app:app", host=args.host, port=args.port, log_level="warning", timeout_graceful_shutdown=2
+    )
 
 
 # The guard matters: gamdl downloads through multiprocessing, and macOS spawns
