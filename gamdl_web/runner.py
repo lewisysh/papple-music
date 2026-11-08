@@ -430,6 +430,18 @@ async def _fix_audio_timing(path: str) -> None:
 
 class WebSongDownloader(AppleMusicSongDownloader):
     async def get_download_item(self, media):
+        # Songs listed in an album or playlist come without their album: fetch
+        # it so %label%, %upc%, the label/UPC tags and the motion cover have it.
+        album_id = getattr(media.tags, "album_id", None)
+        relationships = (media.media_metadata or {}).get("relationships") or {}
+        if album_id and media.media_metadata and not (relationships.get("albums") or {}).get("data"):
+            try:
+                album = await self.base.interface.base.get_album_cached(album_id)
+            except Exception as e:
+                logger.debug("album_lookup_failed", album_id=album_id, error=str(e))
+            else:
+                if album:
+                    media.media_metadata["relationships"] = {**relationships, "albums": {"data": [album]}}
         # get_final_path runs before the first await in here, so this can't
         # leak into another song's name.
         self.base.current_media = media

@@ -103,7 +103,10 @@ def context(tags, playlist_tags=None, media=None, position=None, position_total=
         feat += [a for a in _split_artists(m.group(1)) if a not in main]
     if playlist_tags and playlist_tags.track:
         position = playlist_tags.track
-        position_total = position_total or (media.total if media else None)
+        # Pad to the playlist's length, not the number of links in the job. gamdl
+        # gives playlist songs no total, but the listing has every track by now.
+        listed = (((media.playlist_metadata or {}).get("relationships") or {}).get("tracks") or {}).get("data") if media else None
+        position_total = (media.total if media else None) or len(listed or []) or position_total
     date = tags.date
     date_text = date.isoformat()[:10] if hasattr(date, "isoformat") else str(date or "")[:10]
     rating = getattr(tags.rating, "value", tags.rating)

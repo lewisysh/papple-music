@@ -91,7 +91,11 @@ def _from_csv(text: str) -> list[dict] | None:
     first = text.lstrip().split("\n", 1)[0].lower()
     if not any(d in first for d in (",", "\t", ";")) or not re.search(r"artist|아티스트|가수", first):
         return None
-    dialect = csv.Sniffer().sniff(text[:2000], delimiters=",\t;")
+    try:
+        dialect = csv.Sniffer().sniff(text[:2000], delimiters=",\t;")
+    except csv.Error:
+        # Not a spreadsheet after all, e.g. a heading like "Summer Mix, Various Artists".
+        return None
     rows = list(csv.DictReader(io.StringIO(text), dialect=dialect))
     if not rows:
         return None
@@ -324,8 +328,9 @@ def remember(name: str, songs: dict[str, str]) -> None:
 
 def safe_name(name: str) -> str:
     """A list name usable as a folder name."""
-    # Braces and % too: the name ends up inside a path template.
-    name = re.sub(r'[\\/:*?"<>|{}%\x00-\x1f]', " ", name or "").strip(" .")
+    # Braces and % too: the name ends up inside a path template. ";" because
+    # gamdl replaces it in folder names, which put the songs in another folder.
+    name = re.sub(r'[\\/:*?"<>|;{}%\x00-\x1f]', " ", name or "").strip(" .")
     return re.sub(r"\s+", " ", name)[:80] or "Imported"
 
 

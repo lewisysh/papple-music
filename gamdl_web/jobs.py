@@ -414,6 +414,12 @@ class JobManager:
                         track.message = SKIP_MESSAGES[GamdlDownloaderMediaFileExistsError]
                         track.path = existing
                         track.quality = await convert.audio_quality(existing, settings.ffmpeg_path)
+                        if settings.save_playlist and item.playlist_file_path and media.playlist_tags:
+                            # gamdl lists a song in the M3U8 only while downloading it;
+                            # without this a re-run left just the new songs in it.
+                            downloader._update_playlist_file(
+                                item.playlist_file_path, existing, media.playlist_tags.track
+                            )
                         self._publish(job)
                         continue
 
@@ -428,14 +434,29 @@ class JobManager:
                     os.remove(item.final_path)
                     log.info(f'잠긴 파일을 지우고 다시 받습니다: "{track.title}"')
 
+                # Single songs share one folder (Songs/, Imports/<name>/): a cover
+                # there would be whichever song's album came first.
+                is_song = media_type in {"songs", "library-songs"}
+                shared_folder = is_song and downloader.base.single_song_mode and settings.single_song_folder
+                if is_song and (shared_folder or (item.cover_path and os.path.dirname(item.cover_path) in cover_done)):
+                    # In a playlist's folder the playlist's own cover stays: gamdl
+                    # would write each song's album cover over it. (A video's cover
+                    # is named after the video, so it's left alone.)
+                    item.cover_path = None
+
                 token = progress.reporter.set(self._progress_reporter(job, track, converting)) if track else None
                 try:
                     await downloader.download(item)
                 except GamdlDownloaderSyncedLyricsOnlyError:
                     if track:
-                        track.status = "done"
-                        track.message = "가사만 저장"
-                        track.path = item.synced_lyrics_path
+                        # gamdl writes the file only when the song has synced lyrics.
+                        if item.synced_lyrics_path and os.path.exists(item.synced_lyrics_path):
+                            track.status = "done"
+                            track.message = "가사만 저장"
+                            track.path = item.synced_lyrics_path
+                        else:
+                            track.status = "skipped"
+                            track.message = "가사 없음"
                 except SKIP_ERRORS as e:
                     log.warning(f'건너뜀 "{track.title if track else media.media_id}": {e}')
                     if track:
@@ -444,6 +465,14 @@ class JobManager:
                         if isinstance(e, GamdlDownloaderMediaFileExistsError) and item.final_path and os.path.exists(item.final_path):
                             track.path = item.final_path
                             track.quality = await _file_quality(item.final_path, media_type, settings)
+                            if converting and not os.path.exists(convert.target_path(item.final_path, settings.output_format)):
+                                # An m4a from an earlier run (saved as original, or a
+                                # conversion that failed or was cancelled) still gets
+                                # the format asked for.
+                                progress.report("convert")
+                                await self._convert(track, item, settings, log)
+                                if track.path != item.final_path:
+                                    track.status = "done"
                 except Exception as e:
                     message = await wrapper.explain_error(settings, str(e) or type(e).__name__)
                     log.error(
@@ -481,7 +510,7 @@ class JobManager:
                                 track.quality = await convert.audio_quality(item.final_path, settings.ffmpeg_path)
                                 progress.report("finish")
                                 await self._tag_extras(item, settings, log)
-                                if settings.save_motion_cover:
+                                if settings.save_motion_cover and not shared_folder:
                                     await self._save_motion(item, settings, log, motion_done)
                             if converting and os.path.exists(item.final_path):
                                 progress.report("convert")

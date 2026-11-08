@@ -356,7 +356,8 @@ async def audio_quality(path: str, ffmpeg: str = "ffmpeg") -> dict | None:
     {"codec": "alac"|"aac"|"eac3"|..., "bits": 24, "rate": 96000, "kbps": 256}."""
     try:
         info = await probe(path, _ffprobe_for(shutil.which(ffmpeg) or ffmpeg))
-    except (ConvertError, OSError, ValueError):
+    # Without ffprobe mutagen reads the file, and a truncated one raises its own errors.
+    except (ConvertError, OSError, ValueError, mutagen.MutagenError):
         return None
 
     def number(key: str) -> int | None:
