@@ -18,7 +18,11 @@ async function api(path, { method = "GET", body, form, signal } = {}) {
   const res = await fetch(path, opts);
   let data = null;
   try { data = await res.json(); } catch { /* empty body */ }
-  if (!res.ok) throw new Error(data?.detail || data?.body?.error || `HTTP ${res.status}`);
+  if (!res.ok) {
+    // FastAPI lists validation errors as [{ msg, … }].
+    const detail = Array.isArray(data?.detail) ? data.detail.map((d) => d.msg).join("; ") : data?.detail;
+    throw new Error(detail || data?.body?.error || `HTTP ${res.status}`);
+  }
   return data;
 }
 
@@ -582,7 +586,7 @@ function importRow(e, i) {
   return `
     <li class="imp-row ${status}" data-imp="${i}">
       <input type="checkbox" class="imp-check" data-imp-check="${i}"${e.checked ? " checked" : ""}${c && !e.have ? "" : " disabled"} aria-label="받기">
-      <span class="imp-status" title="${IMPORT_STATUS[status]}">${status === "wait" ? '<span class="spinner"></span>' : icon({ sure: "checkmark", check: "alert", none: "close", have: "checkmark" }[status])}</span>
+      <span class="imp-status" title="${IMPORT_STATUS[status]}">${status === "wait" ? '<span class="spinner"></span>' : icon({ sure: "checkmark", check: "alert", none: "xmark", have: "checkmark" }[status])}</span>
       <span class="imp-line" title="${esc(e.line)}">${esc(e.line)}</span>
       <span class="imp-match">${match}</span>
       <span class="imp-actions">${options}${c ? `<button class="pl-btn" data-imp-play="${i}" title="미리 듣기" aria-label="미리 듣기">${icon("play")}</button>` : ""}</span>
@@ -624,10 +628,16 @@ async function startImport() {
   if (!text.trim()) { $("#import-text").focus(); return; }
   const seq = ++imp.seq;
   const name = $("#import-name").value.trim();
-  const [parsed, have] = await Promise.all([
-    api("/api/import/parse", { method: "POST", body: { text } }),
-    name ? api(`/api/import/lists/${encodeURIComponent(name)}`).catch(() => ({ songs: [] })) : { songs: [] },
-  ]);
+  let parsed, have;
+  try {
+    [parsed, have] = await Promise.all([
+      api("/api/import/parse", { method: "POST", body: { text } }),
+      name ? api(`/api/import/lists/${encodeURIComponent(name)}`).catch(() => ({ songs: [] })) : { songs: [] },
+    ]);
+  } catch (err) {
+    if (seq === imp.seq) toast(err.message, "err");
+    return;
+  }
   if (seq !== imp.seq) return;
   const owned = new Set(have.songs);
   imp.entries = parsed.entries.map((e) => ({ ...e, result: null, candidates: [], pick: 0, checked: false }));
@@ -815,6 +825,8 @@ function parseAppleUrl(url) {
   if (song) return { type: "songs", id: song };
   const kinds = { album: "albums", playlist: "playlists", song: "songs", "music-video": "music-videos", artist: "artists" };
   const i = parts.findIndex((p) => p in kinds);
+  // music.apple.com/library/playlist/p.… is in the library, not the catalog.
+  if (parts[i] === "playlist" && parts[i - 1] === "library") return { type: "library-playlists", id: parts[parts.length - 1] };
   return i >= 0 ? { type: kinds[parts[i]], id: parts[parts.length - 1] } : null;
 }
 
@@ -847,7 +859,7 @@ async function openAppleLink(url) {
     highlightTrack(parsed.id);
     return;
   }
-  const path = itemPath(parsed);
+  const path = parsed.type === "library-playlists" ? `/library/playlist/${encodeURIComponent(parsed.id)}` : itemPath(parsed);
   if (path) navigate(path);
   else fallback();
 }
@@ -924,7 +936,7 @@ function fetchFormats(type, id) {
 const sheet = {
   root: $("#dl-modal"), art: $("#dl-art"), title: $("#dl-title"), sub: $("#dl-sub"),
   source: $("#dl-source"), list: $("#dl-options"), note: $("#dl-note"), saveas: $("#dl-saveas"),
-  ok: $("#dl-ok"), cancel: $("#dl-cancel"), item: null, options: [], seq: 0,
+  ok: $("#dl-ok"), cancel: $("#dl-cancel"), item: null, options: [], seq: 0, extra: "",
 };
 
 const OUTPUT_NAMES = { flac: "FLAC", wav: "WAV", aiff: "AIFF", mp3: "MP3" };
@@ -989,22 +1001,27 @@ function formatOptions(data) {
 
 function renderSheetOptions(options, note) {
   sheet.options = options;
+  sheet.extra = note || "";
   const last = store.get("lastFamily", wrapperReady() ? "alac" : "aac");
   const pick = Math.max(0, options.findIndex((o) => o.family === last));
   sheet.list.innerHTML = options.map((o, i) => optionRow(o, i, i === pick)).join("");
   sheet.ok.disabled = !options.length;
+  // Focus the choice so Enter confirms it (Enter only acts inside the sheet).
+  $("input:checked", sheet.list)?.focus({ preventScroll: true });
   updateSheetNote(note);
 }
 
 function updateSheetNote(extra = "") {
   const choice = sheet.options[Number($("input:checked", sheet.list)?.value)];
+  const extras = [].concat(extra || []).filter(Boolean);
   const notes = [];
   if (choice && NEEDS_WRAPPER.has(choice.family) && !wrapperReady()) {
     notes.push("wrapper에 로그인되어 있지 않아 무손실·Atmos는 실패할 수 있습니다.");
   }
-  if (extra) notes.push(extra);
-  sheet.note.textContent = notes.join(" ");
-  sheet.note.className = `hint${notes.length && !extra ? " warn" : ""}`;
+  notes.push(...extras);
+  // One element per sentence, so the English page translates each of them.
+  sheet.note.innerHTML = notes.map((n) => `<span>${esc(n)}</span>`).join(" ");
+  sheet.note.className = `hint${notes.length && !extras.length ? " warn" : ""}`;
 }
 
 async function openDownloadSheet(it) {
@@ -1036,7 +1053,7 @@ async function openDownloadSheet(it) {
     const note = [
       data.sample ? "곡마다 제공 음질이 다르면 같은 종류에서 가장 좋은 걸로 받습니다." : "",
       data.source === "catalog" ? "wrapper 없이 조회해서 48kHz 넘는 Hi-Res가 빠졌을 수 있어요." : "",
-    ].filter(Boolean).join(" ");
+    ].filter(Boolean);
     renderSheetOptions(formatOptions(data), note);
   } catch (err) {
     if (seq !== sheet.seq) return;
@@ -1049,14 +1066,18 @@ function closeDownloadSheet() {
   sheet.root.classList.add("hidden");
 }
 
-sheet.list.addEventListener("change", () => updateSheetNote(sheet.note.className === "hint" ? sheet.note.textContent : ""));
+sheet.list.addEventListener("change", () => updateSheetNote(sheet.extra));
 sheet.list.addEventListener("dblclick", (e) => { if (e.target.closest("label")) sheet.ok.click(); });
 sheet.cancel.addEventListener("click", closeDownloadSheet);
 sheet.root.addEventListener("click", (e) => { if (e.target === sheet.root) closeDownloadSheet(); });
 document.addEventListener("keydown", (e) => {
   if (sheet.root.classList.contains("hidden")) return;
   if (e.key === "Escape") closeDownloadSheet();
-  if (e.key === "Enter") { e.preventDefault(); sheet.ok.click(); }
+  // Only from inside the sheet, and not on another button (Enter on 취소 cancels).
+  if (e.key === "Enter" && !e.defaultPrevented && sheet.root.contains(e.target) && !e.target.closest("button:not(#dl-ok)")) {
+    e.preventDefault();
+    sheet.ok.click();
+  }
 });
 
 sheet.ok.addEventListener("click", async () => {
@@ -1209,6 +1230,7 @@ async function runSearch(term) {
     renderSearch();
   } catch (err) {
     if (seq !== state.search.seq) return;
+    state.search.loaded = null; // so 검색 again retries
     $("#search-results").innerHTML = `<div class="search-error"><span class="status-icon error">${icon("alert")}</span>${esc(err.message)}</div>`;
   }
 }
@@ -1529,6 +1551,8 @@ function detailHead(it, extra) {
     artists: "아티스트 다운로드",
   }[it.type];
   const motion = it.motion && it.type === "albums";
+  // Same states as markDownloadButtons, so a queued album reads as queued when revisited.
+  const queued = state.queued.has(it.url);
   return `
     <button class="back-btn" data-back>${icon("chev")}<span>뒤로</span></button>
     <header class="detail-head ${esc(it.type)}" data-type="${esc(it.type)}" data-id="${esc(it.id)}">
@@ -1543,7 +1567,7 @@ function detailHead(it, extra) {
         <div class="detail-meta"><span>${meta}</span>${qualityMarks(it)}</div>
         <div class="detail-actions">
           ${extra.playable ? `<button class="btn btn-play" data-play-all>${icon("play")}재생</button>` : ""}
-          ${download && it.url ? `<button class="btn btn-primary" data-download="${esc(it.url)}" data-name="${esc(it.name)}" data-label="${esc(download)}">${icon("arrowdown")}${download}</button>` : ""}
+          ${download && it.url ? `<button class="btn btn-primary${queued ? " queued" : ""}" data-download="${esc(it.url)}" data-name="${esc(it.name)}" data-label="${esc(download)}"${queued ? ' title="대기열에 추가됨 · 누르면 다운로드 화면으로" aria-label="대기열에 추가됨"' : ""}>${icon(queued ? "checkmark" : "arrowdown")}${queued ? "대기열에 추가됨" : download}</button>` : ""}
           ${motion ? `<a class="btn btn-gray" href="/api/motion/albums/${esc(it.id)}?quality=best&download=1" download>${icon("play")}움직이는 커버 저장</a>` : ""}
           ${it.url ? `<a class="btn btn-gray" href="${esc(it.url)}" target="_blank" rel="noopener">Apple Music에서 열기</a>` : ""}
         </div>
@@ -1623,7 +1647,8 @@ function renderDetail(kind, data) {
       ? `<div class="detail-artist">${artists.length
           ? artists.map((a) => `<a href="/artist/${esc(a.id)}" data-nav>${esc(a.name)}</a>`).join(", ")
           : esc(it.artist || "")}</div>`
-      : `<div class="detail-artist plain">${esc(it.artist || "")}</div>`;
+      // A library playlist's "artist" is UI text ("내 보관함"), not a name.
+      : `<div class="detail-artist plain${kind === "library-playlists" ? " ui" : ""}">${esc(it.artist || "")}</div>`;
     const playable = data.tracks.some((t) => t.url && t.type === "songs");
     box.innerHTML = detailHead(it, { artistHtml, playable }) + renderTracklist(data) + renderViews(data.views);
   }
@@ -1850,6 +1875,10 @@ async function playCurrent({ keepTime = 0 } = {}) {
   } catch (err) {
     if (prep.signal.aborted) return;
     player.root.classList.remove("loading");
+    // Don't leave the previous song loaded (and marked) under this one's title.
+    player.audio.removeAttribute("src");
+    player.audio.load();
+    $$(".song.playing, .track.playing").forEach((el) => el.classList.remove("playing"));
     toast(err.message, "err");
     if (player.quality === "aac" && player.queue[player.index] === t) step(1);
     return;
@@ -1916,7 +1945,13 @@ $("#pl-shuffle").addEventListener("click", () => {
   player.shuffle = !player.shuffle;
   $("#pl-shuffle").classList.toggle("on", player.shuffle);
   if (player.shuffle) shuffleUpcoming();
-  else if (player.order) player.queue = player.queue.slice(0, player.index + 1).concat(player.order.filter((t) => !player.queue.slice(0, player.index + 1).includes(t)));
+  else if (player.order) {
+    // Back to the list's order, keeping what was queued or cleared meanwhile:
+    // songs added with "다음에 재생" stay next, cleared ones stay gone.
+    const upcoming = player.queue.slice(player.index + 1);
+    player.queue = player.queue.slice(0, player.index + 1)
+      .concat(upcoming.filter((t) => !player.order.includes(t)), player.order.filter((t) => upcoming.includes(t)));
+  }
   renderQueuePanel();
 });
 $("#pl-repeat").addEventListener("click", () => {
@@ -2195,9 +2230,9 @@ $("#sp-tabs").addEventListener("click", (e) => {
   if (btn && $(`#sp-${btn.dataset.panel}`).classList.contains("hidden")) openPanel(btn.dataset.panel);
 });
 
-function queueRow(t, attrs) {
+function queueRow(t, attrs, cls = "") {
   return `
-    <li class="q-row" ${attrs}>
+    <li class="q-row${cls}" ${attrs}>
       <span class="q-art">${artworkImg(t)}</span>
       <span class="q-text"><b>${esc(t.name)}</b><small>${esc([t.artist, t.album].filter(Boolean).join(" — "))}</small></span>
     </li>`;
@@ -2214,7 +2249,7 @@ function renderQueuePanel(scrollToCurrent = false) {
     ${player.history.length ? `
       <div class="q-head"><h3>재생 기록</h3><button class="btn-link" data-q-clear="history">지우기</button></div>
       <ol class="q-list">${player.history.map((t, i) => queueRow(t, `data-history="${i}"`)).join("")}</ol>` : ""}
-    ${current ? `<div class="q-head" id="q-now"><h3>지금 재생 중</h3></div><ol class="q-list">${queueRow(current, 'class="q-row current"')}</ol>` : ""}
+    ${current ? `<div class="q-head" id="q-now"><h3>지금 재생 중</h3></div><ol class="q-list">${queueRow(current, "", " current")}</ol>` : ""}
     <div class="q-head"><div><h3>계속 재생</h3>${player.context ? `<small>${esc(player.context)}에서</small>` : ""}</div>
       ${upcoming.length ? '<button class="btn-link" data-q-clear="upcoming">지우기</button>' : ""}</div>
     ${upcoming.length ? `<ol class="q-list">${upcoming.map((t, i) => queueRow(t, `data-queue="${player.index + 1 + i}"`)).join("")}</ol>`
@@ -2521,18 +2556,21 @@ const videoEl = $("#vm-video");
 const vid = { hls: null, prep: null, item: null };
 $("#vm-close").innerHTML = icon("xmark");
 
+// One load for everyone waiting (the preview and the full video ask together).
+let hlsLib = null;
 function loadHlsLib() {
   if (window.Hls) return Promise.resolve(window.Hls);
-  return new Promise((resolve, reject) => {
+  return hlsLib ||= new Promise((resolve, reject) => {
     const script = document.createElement("script");
     script.src = "/static/lib/hls.min.js";
     script.onload = () => resolve(window.Hls);
-    script.onerror = () => reject(new Error("영상 플레이어를 불러오지 못했습니다"));
+    script.onerror = () => { hlsLib = null; reject(new Error("영상 플레이어를 불러오지 못했습니다")); };
     document.head.append(script);
   });
 }
 
 async function attachHls(src) {
+  const item = vid.item;
   vid.hls?.destroy();
   vid.hls = null;
   if (videoEl.canPlayType("application/vnd.apple.mpegurl")) {
@@ -2540,6 +2578,10 @@ async function attachHls(src) {
   } else {
     const Hls = await loadHlsLib();
     if (!Hls.isSupported()) throw new Error("이 브라우저는 HLS 재생을 지원하지 않습니다");
+    // Closed or another video opened while the library loaded.
+    if (vid.item !== item) return;
+    // The preview may have attached while this one waited for the library.
+    vid.hls?.destroy();
     vid.hls = new Hls({ enableWorker: true });
     vid.hls.loadSource(src);
     vid.hls.attachMedia(videoEl);
@@ -2739,6 +2781,8 @@ menu.addEventListener("click", async (e) => {
 });
 
 const infoModal = $("#info-modal");
+// Rows that hold names (the English page leaves them as they are).
+const INFO_NAME_ROWS = new Set(["아티스트", "앨범", "작곡가", "장르", "레이블", "저작권"]);
 
 async function showInfo(it) {
   const body = $("#info-body");
@@ -2770,7 +2814,7 @@ async function showInfo(it) {
         <div><h2>${esc(s.name)}${explicitMark(s)}</h2><p class="secondary">${esc(s.artist || "")}</p>
           <div class="detail-meta">${qualityMarks(s)}</div></div>
       </div>
-      <dl class="info-grid">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`;
+      <dl class="info-grid">${rows.map(([k, v]) => `<dt>${k}</dt><dd${INFO_NAME_ROWS.has(k) ? " data-no-i18n" : ""}>${esc(v)}</dd>`).join("")}</dl>`;
   } catch (err) {
     body.innerHTML = `<p class="search-error">${esc(err.message)}</p>`;
   }
@@ -3134,6 +3178,8 @@ function renderJob(job) {
       <div class="panel panel-tracks hidden"></div>
       <div class="panel panel-logs hidden"><div class="loglines"></div></div>`;
     $("#jobs").prepend(el);
+    // Redrawn after a reconnect (the snapshot rebuilds every job): reopen its log.
+    if (state.open.logs.delete(job.id)) toggleJobPanel(job.id, "logs");
   }
   el.dataset.status = job.status;
 
@@ -3312,7 +3358,12 @@ modal.cancel.addEventListener("click", async () => {
 });
 document.addEventListener("keydown", (e) => {
   if (modal.root.classList.contains("hidden")) return;
-  if (e.key === "Enter" && e.target !== modal.filter) { e.preventDefault(); modal.ok.click(); }
+  // Only from inside the prompt, and not on another button (Enter on 건너뛰기 skips).
+  if (e.key === "Enter" && !e.defaultPrevented && modal.root.contains(e.target) && e.target !== modal.filter
+    && !e.target.closest("button:not(#prompt-ok)")) {
+    e.preventDefault();
+    modal.ok.click();
+  }
 });
 
 // ---------------------------------------------------------------- wrapper
@@ -3465,9 +3516,12 @@ async function wrapper2fa(e) {
 async function wrapperLogout() {
   state.awaiting2fa = false;
   // The wrapper restarts to sign out, which can take half a minute.
+  // Also the 2FA form's 취소, where this button isn't on the page.
   const btn = $("#btn-wrapper-logout");
-  btn.disabled = true;
-  btn.textContent = "로그아웃 중…";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "로그아웃 중…";
+  }
   try { await api("/api/wrapper/logout", { method: "POST" }); } catch (err) { toast(err.message, "err"); }
   state.loginKey = null;
   await refreshWrapper();

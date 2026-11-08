@@ -268,6 +268,7 @@ const I18N_EN = {
 "싱크 가사 형식": "Synced lyrics format",
 "싱크 가사 파일 저장 안 함": "Don't save synced lyrics files",
 "가사만 저장": "Lyrics only",
+"가사 없음": "No lyrics",
 "음원은 받지 않습니다": "Doesn't download the audio",
 "곡 날짜에 앨범 발매일 사용": "Use the album release date for songs",
 "뮤직비디오 · 영상": "Music videos",
@@ -777,7 +778,12 @@ const i18n = (() => {
   for (const [key, value] of entries) {
     if (key.includes("{}")) {
       const re = new RegExp(`^${key.split("{}").map(escapeRe).join("(.+?)")}$`, "s");
-      patterns.push([re, value, key.replace(/\{\}/g, "").length]);
+      // `inner`: may translate a filled-in value (fixed text on both ends, or a
+      // "message: {}" wrapper). `edges`: a value at the start/end that must not
+      // run across a " · " separator ("디스크 {}" is not "디스크 1 · 3번").
+      const inner = !key.startsWith("{}") && (!key.endsWith("{}") || key.endsWith(": {}"));
+      const edges = key.includes("·") ? [] : [key.startsWith("{}") && 0, key.endsWith("{}") && key.split("{}").length - 2];
+      patterns.push([re, value, key.replace(/\{\}/g, "").length, inner, edges.filter((i) => i !== false)]);
     } else {
       exact.set(key, value);
     }
@@ -789,17 +795,38 @@ const i18n = (() => {
     let i = 0;
     return template.replace(/\{(\d*)\}/g, (m, n) => {
       const g = groups[n === "" ? i++ : Number(n)];
-      return g === undefined ? m : translate(g);
+      return g === undefined ? m : fillValue(g);
     });
+  }
+
+  function match(norm, onlyInner) {
+    for (const [re, value, , inner, edges] of patterns) {
+      if (onlyInner && !inner) continue;
+      const m = re.exec(norm);
+      if (m && !edges.some((i) => m[i + 1].includes(" · "))) return fill(value, m.slice(1));
+    }
+    return null;
+  }
+
+  // A filled-in value is usually a name or a search term, so it stays as it is
+  // unless it is UI text itself: an exact string or an `inner` pattern ("{}분"
+  // would turn the song "기분" into "기 min").
+  function fillValue(g) {
+    if (!HANGUL.test(g)) return g;
+    const [, lead, core, tail] = /^(\s*)([\s\S]*?)(\s*)$/.exec(g);
+    const norm = core.replace(/\s+/g, " ");
+    if (exact.has(norm)) return lead + exact.get(norm) + tail;
+    const out = match(norm, true);
+    if (out !== null) return lead + out + tail;
+    if (norm.includes(" · ")) return lead + norm.split(" · ").map(fillValue).join(" · ") + tail;
+    return g;
   }
 
   function translateCore(s) {
     const norm = s.replace(/\s+/g, " ");
     if (exact.has(norm)) return exact.get(norm);
-    for (const [re, value] of patterns) {
-      const m = re.exec(norm);
-      if (m) return fill(value, m.slice(1));
-    }
+    const out = match(norm, false);
+    if (out !== null) return out;
     const prefix = /^([+·•–—]\s*)(.+)$/.exec(norm);
     if (prefix) {
       const rest = translateCore(prefix[2]);
@@ -836,7 +863,9 @@ const i18n = (() => {
   const origAttrs = new WeakMap();
   // Names of songs, albums, playlists and people are content, not UI text.
   const CONTENT = ".sb-playlists, .sb-profile-text, .song-title, .card-title, .sg-text b, .recent-text b, .q-text, "
-    + ".pl-text, .fp-text, .fp-head-text, .video-text, .job-title, .t-title, .jp-title, .detail-head h1, .dl-meta h3, .info-head h2";
+    + ".pl-text, .fp-text, .fp-head-text, .video-text, .job-title, .t-title, .jp-title, .detail-head h1, .dl-meta h3, .info-head h2, .info-head p, "
+    + ".ly-line, .sg-term, .recent-chip, .song-sub, .detail-artist:not(.ui), .detail-meta > span, .detail-desc span, .desc-body, "
+    + ".imp-text b, .imp-text small, .imp-line, .imp-pick";
   const skip = (el) => el?.closest?.(`script, style, textarea, [data-no-i18n], ${CONTENT}`);
   const skipAttr = (el) => el?.closest?.("[data-no-i18n], .sb-playlists");
 
