@@ -704,6 +704,12 @@ const I18N_EN = {
 "Safari와 Mac 앱에서 한글 검색어 입력 후 Enter가 바로 검색돼요": "Korean input now searches with one Enter in Safari and the Mac app",
 // DJ key/BPM
 "DJ용 키·BPM 태그: 기존 파일, GetSongBPM, Deezer에서 가져와 캠블롯·음악 표기·오픈 키로 넣어요": "Key and BPM tags for DJs, from your own files, GetSongBPM and Deezer, in Camelot, musical or Open Key notation",
+"앨범으로 받아도 레이블·UPC 태그와 움직이는 커버가 저장돼요": "Album downloads now get label and UPC tags and the motion cover",
+"변환해서 받는 플레이리스트를 다시 받아도 M3U8 목록이 비지 않아요": "Re-downloading a converted playlist keeps every song in its M3U8",
+"이미 받은 m4a도 고른 형식(FLAC 등)으로 변환해요": "An m4a you already have is converted to the format you pick",
+"Songs·가져오기 폴더에 엉뚱한 커버가 생기지 않고, 100곡 넘는 플레이리스트는 001처럼 번호를 맞춰요": "No stray covers in Songs or import folders, and playlists over 99 songs number as 001",
+"앱 종료가 빨라지고, 재생이 안 되면 실제 이유를 보여 줘요": "Quitting is quicker, and playback that can't start says why",
+"영어 화면에서 가사·검색어가 깨지지 않고, 셔플·Enter 키·2단계 인증 취소 등이 바르게 동작해요": "The English page leaves lyrics and search terms alone, and shuffle, Enter and 2FA cancel work right",
 "오래된 뮤직비디오가 두 배 길이로 저장되고 뒤쪽 영상이 비던 문제를 고쳤어요": "Fixed older music videos saving at twice their length with no picture in the second half",
 "다운로드 목록에 뮤직비디오의 실제 코덱과 해상도를 보여 줘요": "Downloads show a music video's real codec and resolution",
 "HE-AAC 오디오 길이가 두 배로 기록돼 있어 바로잡았습니다": "Fixed HE-AAC audio recorded at twice its length",
