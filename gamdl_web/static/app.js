@@ -2908,6 +2908,11 @@ const fmtKhz = (rate) => `${Number((rate / 1000).toFixed(1))}kHz`;
 // e.g. [lossless logo] 24bit · 96kHz, [Dolby logo] 768kbps, AAC 256kbps.
 function qualityTag(q) {
   if (!q?.codec) return "";
+  if (q.video) {
+    // The resolution the file really has: old videos top out well below the 1080p picked.
+    const res = q.height >= 2160 ? "4K" : q.height ? `${q.height}p` : "";
+    return `<span class="qtag"><b>${q.codec === "hevc" ? "H.265" : "H.264"}</b>${res ? `<span>${res}</span>` : ""}</span>`;
+  }
   if (LOSSLESS_CODECS.has(q.codec)) {
     const hires = (q.bits || 16) > 16 && (q.rate || 0) > 48000;
     const detail = [q.bits && `${q.bits}bit`, q.rate && fmtKhz(q.rate)].filter(Boolean).join(" · ");

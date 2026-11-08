@@ -28,7 +28,7 @@ from gamdl.interface import (
 
 from . import convert, dj, importer, motion, wrapper
 from . import progress
-from .config import SettingsStore
+from .config import Settings, SettingsStore
 from .events import EventBus
 from .logs import current_job_id
 from .prompts import PromptBroker, PromptCancelledError, WebPrompts, _artwork
@@ -66,6 +66,16 @@ TRACK_TYPES = {
     "library-music-videos",
     "uploaded-videos",
 }
+VIDEO_TYPES = {"music-videos", "library-music-videos", "uploaded-videos"}
+
+
+async def _file_quality(path: str, media_type: str | None, settings: Settings) -> dict | None:
+    """The real format of a downloaded file: resolution for videos, audio otherwise."""
+    if media_type in VIDEO_TYPES:
+        return await asyncio.to_thread(convert.video_quality, path)
+    return await convert.audio_quality(path, settings.ffmpeg_path)
+
+
 COLLECTION_TYPES = {
     "albums",
     "library-albums",
@@ -433,7 +443,7 @@ class JobManager:
                         track.message = SKIP_MESSAGES.get(type(e), str(e))
                         if isinstance(e, GamdlDownloaderMediaFileExistsError) and item.final_path and os.path.exists(item.final_path):
                             track.path = item.final_path
-                            track.quality = await convert.audio_quality(item.final_path, settings.ffmpeg_path)
+                            track.quality = await _file_quality(item.final_path, media_type, settings)
                 except Exception as e:
                     message = await wrapper.explain_error(settings, str(e) or type(e).__name__)
                     log.error(
@@ -465,6 +475,8 @@ class JobManager:
                             track.message = PROTECTED_MESSAGE
                         elif track and not media.partial:
                             track.path = item.final_path
+                            if media_type in VIDEO_TYPES and os.path.exists(item.final_path):
+                                track.quality = await _file_quality(item.final_path, media_type, settings)
                             if media_type in {"songs", "library-songs"} and os.path.exists(item.final_path):
                                 track.quality = await convert.audio_quality(item.final_path, settings.ffmpeg_path)
                                 progress.report("finish")

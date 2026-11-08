@@ -703,6 +703,10 @@ const I18N_EN = {
 "Safari와 Mac 앱에서 한글 검색어 입력 후 Enter가 바로 검색돼요": "Korean input now searches with one Enter in Safari and the Mac app",
 // DJ key/BPM
 "DJ용 키·BPM 태그: 기존 파일, GetSongBPM, Deezer에서 가져와 캠블롯·음악 표기·오픈 키로 넣어요": "Key and BPM tags for DJs, from your own files, GetSongBPM and Deezer, in Camelot, musical or Open Key notation",
+"오래된 뮤직비디오가 두 배 길이로 저장되고 뒤쪽 영상이 비던 문제를 고쳤어요": "Fixed older music videos saving at twice their length with no picture in the second half",
+"다운로드 목록에 뮤직비디오의 실제 코덱과 해상도를 보여 줘요": "Downloads show a music video's real codec and resolution",
+"HE-AAC 오디오 길이가 두 배로 기록돼 있어 바로잡았습니다": "Fixed HE-AAC audio recorded at twice its length",
+"오디오 길이를 확인하지 못했습니다: {}": "Couldn't check the audio length: {}",
 "뮤직비디오를 4K로 고르면 PlayReady SL3000 기기로 4K 키를 받아요": "Music videos picked in 4K get their 4K keys from a PlayReady SL3000 device",
 "4K 키를 받을 수 없으면 오류 대신 받을 수 있는 가장 높은 화질로 받아요": "When the 4K key can't be had, the video downloads at the highest quality that can instead of failing",
 "설정에서 .prd·.wvd 기기 파일을 Finder로 골라 등록할 수 있어요": "Pick .prd and .wvd device files in Finder from Settings",

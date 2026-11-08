@@ -418,6 +418,16 @@ class WebSongInterface(AppleMusicSongInterface):
         return stream_info
 
 
+async def _fix_audio_timing(path: str) -> None:
+    """Undo the muxer's doubled HE-AAC length (see convert.fix_sbr_timescale).
+    Never fails the download: a file this can't read stays as it is."""
+    try:
+        if await asyncio.to_thread(convert.fix_sbr_timescale, path):
+            logger.info("HE-AAC 오디오 길이가 두 배로 기록돼 있어 바로잡았습니다")
+    except Exception as e:
+        logger.warning(f"오디오 길이를 확인하지 못했습니다: {e}")
+
+
 class WebSongDownloader(AppleMusicSongDownloader):
     async def get_download_item(self, media):
         # get_final_path runs before the first await in here, so this can't
@@ -428,9 +438,10 @@ class WebSongDownloader(AppleMusicSongDownloader):
         finally:
             self.base.current_media = None
 
-    async def stage(self, *args, **kwargs):
+    async def stage(self, encrypted_path, staged_path, *args, **kwargs):
         progress.report("decrypt")
-        return await super().stage(*args, **kwargs)
+        await super().stage(encrypted_path, staged_path, *args, **kwargs)
+        await _fix_audio_timing(staged_path)
 
 
 # Apple keys music videos above 1080p for hardware DRM only (Widevine L1,
@@ -558,9 +569,10 @@ class WebMusicVideoDownloader(AppleMusicMusicVideoDownloader):
             media.stream_info.file_format = MediaFileFormat.MP4
         return await super().get_download_item(media)
 
-    async def stage(self, *args, **kwargs):
+    async def stage(self, encrypted_path_video, encrypted_path_audio, staged_path, *args, **kwargs):
         progress.report("decrypt")
-        return await super().stage(*args, **kwargs)
+        await super().stage(encrypted_path_video, encrypted_path_audio, staged_path, *args, **kwargs)
+        await _fix_audio_timing(staged_path)
 
 
 @dataclass

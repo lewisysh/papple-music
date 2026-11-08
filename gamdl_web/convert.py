@@ -72,6 +72,208 @@ def head_is_protected(data: bytes) -> bool | None:
     return None
 
 
+AAC_RATES = (96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350)
+
+
+class _Bits:
+    def __init__(self, data: bytes):
+        self.data, self.pos = data, 0
+
+    def left(self) -> int:
+        return len(self.data) * 8 - self.pos
+
+    def read(self, n: int) -> int:
+        if n > self.left():
+            raise ValueError("out of bits")
+        value = 0
+        for _ in range(n):
+            value = (value << 1) | (self.data[self.pos >> 3] >> (7 - (self.pos & 7)) & 1)
+            self.pos += 1
+        return value
+
+
+def _sbr_rates(asc: bytes) -> tuple[int, int] | None:
+    """(core, output) sample rates of an HE-AAC AudioSpecificConfig, or None
+    when it has no SBR (plain AAC)."""
+    bits = _Bits(asc)
+
+    def object_type() -> int:
+        kind = bits.read(5)
+        return 32 + bits.read(6) if kind == 31 else kind
+
+    def rate() -> int:
+        index = bits.read(4)
+        return bits.read(24) if index == 15 else AAC_RATES[index]
+
+    try:
+        kind, core = object_type(), rate()
+        bits.read(4)  # channels
+        if kind in (5, 29):  # SBR / PS signalled up front
+            return core, rate()
+        if kind == 2 and bits.left() >= 3 + 16:
+            bits.read(3)  # GASpecificConfig
+            if bits.read(11) == 0x2B7 and object_type() == 5 and bits.read(1):
+                return core, rate()
+    except (ValueError, IndexError):
+        pass
+    return None
+
+
+def _esds_asc(esds: bytes) -> bytes | None:
+    """The AudioSpecificConfig inside an esds box body."""
+
+    def descriptor(pos: int) -> tuple[int, int, int]:
+        tag, pos, size = esds[pos], pos + 1, 0
+        for _ in range(4):
+            byte, pos = esds[pos], pos + 1
+            size = size << 7 | byte & 0x7F
+            if not byte & 0x80:
+                break
+        return tag, pos, size
+
+    try:
+        tag, pos, _ = descriptor(4)
+        if tag != 3:
+            return None
+        flags, pos = esds[pos + 2], pos + 3
+        if flags & 0x80:
+            pos += 2
+        if flags & 0x40:
+            pos += 1 + esds[pos]
+        if flags & 0x20:
+            pos += 2
+        tag, pos, _ = descriptor(pos)
+        if tag != 4:
+            return None
+        tag, pos, size = descriptor(pos + 13)
+        return esds[pos:pos + size] if tag == 5 else None
+    except IndexError:
+        return None
+
+
+def _read_moov(f) -> tuple[int, bytes] | None:
+    """(file offset, bytes) of the moov box, header included."""
+    f.seek(0)
+    offset = 0
+    while True:
+        header = f.read(8)
+        if len(header) < 8:
+            return None
+        size, kind, read = int.from_bytes(header[:4], "big"), header[4:], 8
+        if size == 1:
+            size, read = int.from_bytes(f.read(8), "big"), 16
+        if kind == b"moov":
+            f.seek(offset)
+            return offset, f.read(size) if size else f.read()
+        if size == 0 or size < read:
+            return None
+        offset += size
+        f.seek(offset)
+
+
+def fix_sbr_timescale(path: str) -> bool:
+    """gamdl's muxer gives HE-AAC audio the core sample rate (22050) as its
+    timescale but writes each frame's length in output samples (2048 at 44100),
+    so the audio reads twice as long as it is: a 3:56 video shows 7:52, with no
+    picture after 3:56. Sets the timescale to the output rate in place and fixes
+    the lengths built from it. True when the file needed it."""
+    with open(path, "r+b") as f:
+        found = _read_moov(f)
+        if not found:
+            return False
+        base, moov = found
+
+        def child(kind: bytes, start: int, end: int):
+            return next(((b, e) for k, b, e in _boxes(moov, start, end) if k == kind), None)
+
+        def field(offset: int, size: int) -> int:
+            return int.from_bytes(moov[offset:offset + size], "big")
+
+        def timing(body: int) -> tuple[int, int, int, int]:
+            """(timescale offset, duration offset, duration size) of an mvhd/mdhd."""
+            return (body + 12, body + 16, 4) if moov[body] == 0 else (body + 20, body + 24, 8)
+
+        top = next(((b, e) for k, b, e in _boxes(moov) if k == b"moov"), None)
+        mvhd = child(b"mvhd", *top) if top else None
+        if not mvhd or any(k == b"mvex" for k, _, _ in _boxes(moov, *top)):
+            return False
+        movie_scale_at, movie_duration_at, movie_duration_size = timing(mvhd[0])
+        movie_scale = field(movie_scale_at, 4)
+
+        patches, track_durations = [], []
+        for kind, body, end in _boxes(moov, *top):
+            if kind != b"trak":
+                continue
+            tkhd = child(b"tkhd", body, end)
+            tkhd_at, tkhd_size = (tkhd[0] + 20, 4) if moov[tkhd[0]] == 0 else (tkhd[0] + 28, 8)
+            track_duration = field(tkhd_at, tkhd_size)
+            mdia = child(b"mdia", body, end)
+            hdlr = child(b"hdlr", *mdia) if mdia else None
+            stbl = child(b"stbl", *child(b"minf", *mdia)) if mdia and child(b"minf", *mdia) else None
+            if hdlr and stbl and moov[hdlr[0] + 8:hdlr[0] + 12] == b"soun" and not child(b"edts", body, end):
+                mdhd = child(b"mdhd", *mdia)
+                scale_at, duration_at, duration_size = timing(mdhd[0])
+                scale, media_duration = field(scale_at, 4), field(duration_at, duration_size)
+                stsd, stts = child(b"stsd", *stbl), child(b"stts", *stbl)
+                entry = next(iter(_boxes(moov, stsd[0] + 8, stsd[1])), None) if stsd else None
+                esds = child(b"esds", entry[1] + 28, entry[2]) if entry and entry[0] == b"mp4a" else None
+                rates = _sbr_rates(_esds_asc(moov[esds[0]:esds[1]]) or b"") if esds else None
+                deltas = [(field(stts[0] + 8 + i * 8, 4), field(stts[0] + 12 + i * 8, 4))
+                          for i in range(field(stts[0] + 4, 4))] if stts else []
+                frame = max(deltas)[1] if deltas else 0
+                if rates and frame == 2048 and scale == rates[0] and rates[1] == 2 * rates[0]:
+                    patches.append((scale_at, 4, rates[1]))
+                    track_duration = round(media_duration * movie_scale / rates[1])
+                    patches.append((tkhd_at, tkhd_size, track_duration))
+            track_durations.append(track_duration)
+
+        if not patches:
+            return False
+        patches.append((movie_duration_at, movie_duration_size, max(track_durations)))
+        for offset, size, value in patches:
+            f.seek(base + offset)
+            f.write(value.to_bytes(size, "big"))
+    return True
+
+
+VIDEO_CODECS = {b"avc1": "h264", b"avc3": "h264", b"hvc1": "hevc", b"hev1": "hevc", b"dvh1": "hevc", b"dvhe": "hevc"}
+
+
+def video_quality(path: str) -> dict | None:
+    """What a downloaded video really is, read from its first video track:
+    {"video": True, "codec": "h264"|"hevc", "width": 1674, "height": 1080}."""
+    try:
+        with open(path, "rb") as f:
+            found = _read_moov(f)
+    except OSError:
+        return None
+    if not found:
+        return None
+    moov = found[1]
+    top = next(((b, e) for k, b, e in _boxes(moov) if k == b"moov"), None)
+    for kind, body, end in _boxes(moov, *top) if top else ():
+        if kind != b"trak":
+            continue
+        path_boxes = (b"mdia", b"minf", b"stbl", b"stsd")
+        start, stop = body, end
+        for name in path_boxes:
+            box = next(((b, e) for k, b, e in _boxes(moov, start, stop) if k == name), None)
+            if not box:
+                break
+            start, stop = box
+        else:
+            entry = next(iter(_boxes(moov, start + 8, stop)), None)
+            if entry and entry[0] in VIDEO_CODECS:
+                at = entry[1] + 24
+                return {
+                    "video": True,
+                    "codec": VIDEO_CODECS[entry[0]],
+                    "width": int.from_bytes(moov[at:at + 2], "big"),
+                    "height": int.from_bytes(moov[at + 2:at + 4], "big"),
+                }
+    return None
+
+
 def is_protected(path: str) -> bool:
     """Whether an MP4 file is still DRM-encrypted, which nothing but Apple's
     Music app can play."""
