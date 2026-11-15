@@ -704,6 +704,12 @@ const I18N_EN = {
 "Safari와 Mac 앱에서 한글 검색어 입력 후 Enter가 바로 검색돼요": "Korean input now searches with one Enter in Safari and the Mac app",
 // DJ key/BPM
 "DJ용 키·BPM 태그: 기존 파일, GetSongBPM, Deezer에서 가져와 캠블롯·음악 표기·오픈 키로 넣어요": "Key and BPM tags for DJs, from your own files, GetSongBPM and Deezer, in Camelot, musical or Open Key notation",
+"이미 받은 곡은 Apple에 묻지 않고 바로 건너뛰어요 (보관함 전체 3000곡도 몇 초)": "Songs you already have are skipped without asking Apple (a 3000-song library takes seconds)",
+"메타데이터 언어를 ko-KR로 두면 다른 나라 계정에서도 태그와 파일 이름이 한글로 저장돼요": "With the metadata language set to ko-KR, tags and file names are in Korean on any country's account",
+"대기열에 작업이 많을 때 wrapper 세션 거부로 실패하던 문제를 고쳤어요": "Fixed downloads failing with a rejected wrapper session when many are queued",
+"AIFF·WAV·MP3 파일의 음질이 제대로 표시돼요": "AIFF, WAV and MP3 files show their real quality",
+"이미 받은 {}곡은 Apple에 묻지 않고 바로 건너뛰었습니다": "Skipped {} songs you already have without asking Apple",
+"Apple 계정 정보를 받지 못해 {}초 뒤 다시 요청합니다": "Couldn't get the Apple account info; asking again in {} s",
 "앨범으로 받아도 레이블·UPC 태그와 움직이는 커버가 저장돼요": "Album downloads now get label and UPC tags and the motion cover",
 "변환해서 받는 플레이리스트를 다시 받아도 M3U8 목록이 비지 않아요": "Re-downloading a converted playlist keeps every song in its M3U8",
 "이미 받은 m4a도 고른 형식(FLAC 등)으로 변환해요": "An m4a you already have is converted to the format you pick",
