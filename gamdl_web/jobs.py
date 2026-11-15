@@ -26,7 +26,7 @@ from gamdl.interface import (
     GamdlInterfaceUrlParseError,
 )
 
-from . import convert, dj, importer, motion, wrapper
+from . import convert, dj, importer, known, motion, wrapper
 from . import progress
 from .config import Settings, SettingsStore
 from .events import EventBus
@@ -69,6 +69,16 @@ TRACK_TYPES = {
 VIDEO_TYPES = {"music-videos", "library-music-videos", "uploaded-videos"}
 
 
+def _kept_as_m4a(entry: dict, output_format: str) -> bool:
+    """An m4a that conversion leaves as it is (Dolby, or lossy for a lossless
+    format), so it's the finished file even though the format asked for differs."""
+    codec = (entry.get("quality") or {}).get("codec")
+    return output_format != "original" and bool(codec) and (
+        codec in convert.SURROUND_CODECS
+        or (output_format in {"flac", "wav", "aiff"} and codec not in convert.LOSSLESS_CODECS)
+    )
+
+
 async def _file_quality(path: str, media_type: str | None, settings: Settings) -> dict | None:
     """The real format of a downloaded file: resolution for videos, audio otherwise."""
     if media_type in VIDEO_TYPES:
@@ -89,6 +99,11 @@ PLAYLIST_FOLDER_RE = re.compile(r"%playlist(?:_id)?%|\{playlist_(?:title|id)\}",
 
 
 SINGLE_SONG_URL_RE = re.compile(r"/song/|[?&]i=\d|/library/songs/")
+# The catalog song a link points at, known without asking Apple.
+CATALOG_SONG_RE = re.compile(r"[?&]i=(\d+)|/song/(?:[^/?#]+/)?(\d+)")
+# While songs are skipped from the known-files index, the page is updated at
+# most this often: thousands of them can go by in a second.
+KNOWN_PUBLISH_EVERY = 0.5
 
 @dataclass
 class Track:
@@ -186,6 +201,7 @@ class JobManager:
         self._running: tuple[str, asyncio.Task] | None = None
         self.motion = None  # MotionService, attached by the app
         self._dj: dict[str, dict] = {}  # per running job: reference folder index, lookups
+        self.known = known.KnownFiles()
 
     # ---- lifecycle -------------------------------------------------------
 
@@ -282,6 +298,32 @@ class JobManager:
 
     # ---- internals -------------------------------------------------------
 
+    async def _skip_known_track(self, job: Job, item, downloader, settings, track: Track, ctx: dict) -> bool:
+        """A song in an album or playlist that is already saved: skip it before
+        gamdl asks Apple for its playback info and stream."""
+        media = item.media
+        base = downloader.base
+        playlist_tags = None
+        if media.playlist_metadata and settings.use_playlist_track_path:
+            playlist_tags = base.interface.base.get_playlist_tags(media.playlist_metadata, media.index or 0)
+            kind = "playlist"
+        else:
+            kind = "single" if base.single_song_mode and base.single_song_template else "album"
+        entry = await self._known_file(ctx, settings, base, kind, str(media.media_id), playlist_tags)
+        if not entry:
+            return False
+        # WebSongInterface stops working on this song when it sees this.
+        media.known_path = entry["path"]
+        track.status = "skipped"
+        track.message = SKIP_MESSAGES[GamdlDownloaderMediaFileExistsError]
+        track.path = entry["path"]
+        track.quality = entry.get("quality")
+        if playlist_tags is not None and settings.save_playlist:
+            # gamdl lists a song in the M3U8 only while it handles it.
+            downloader._update_playlist_file(base.get_playlist_file_path(playlist_tags), entry["path"], playlist_tags.track)
+        ctx["skipped"] += 1
+        return True
+
     def _publish(self, job: Job) -> None:
         self.bus.publish("job", job.public())
 
@@ -316,10 +358,16 @@ class JobManager:
             session = await create_session(settings, prompts)
             if session.apple_music_api.account_restrictions:
                 logger.warning("계정에 콘텐츠 제한이 걸려 있어 일부 항목은 받을 수 없을 수 있습니다")
+            ctx = {"roots": {}, "skipped": 0, "published": 0.0}
             for url_index, url in enumerate(job.urls, 1):
                 job.url_index = url_index
+                if await self._skip_known_link(job, session, settings, url_index, url, ctx):
+                    self._publish_now_and_then(job, ctx)
+                    continue
                 self._publish(job)
-                await self._run_url(job, session, settings, url_index, url)
+                await self._run_url(job, session, settings, url_index, url, ctx)
+            if ctx["skipped"]:
+                logger.info(f"이미 받은 {ctx['skipped']}곡은 Apple에 묻지 않고 바로 건너뛰었습니다")
             job.status = "done"
             if job.import_name:
                 self._finish_import(job, settings)
@@ -354,7 +402,85 @@ class JobManager:
             self._publish(job)
             current_job_id.reset(token)
 
-    async def _run_url(self, job: Job, session, settings, url_index: int, url: str) -> None:
+    def _publish_now_and_then(self, job: Job, ctx: dict) -> None:
+        now = time.monotonic()
+        if now - ctx["published"] >= KNOWN_PUBLISH_EVERY:
+            ctx["published"] = now
+            self._publish(job)
+
+    def _known_roots(self, settings, base, kind: str, playlist_tags=None) -> list[tuple[Path, set[Path]]]:
+        """Where a song of this kind is saved, as (folder, subfolders to leave out).
+        Only that folder counts: a copy in another playlist's or list's folder
+        doesn't mean this one has it."""
+        out = Path(settings.output_path).expanduser()
+        sanitize = base._sanitize_string
+        playlist_values = {}
+        if playlist_tags is not None:
+            playlist_values = {
+                "playlist": playlist_tags.title or "", "playlistartist": playlist_tags.artist or "",
+                "playlist_id": str(playlist_tags.playlist_id or ""),
+            }
+        track_folder = settings.playlist_track_template.rpartition("/")[0]
+        playlist_folder = "/".join(filter(None, (settings.playlist_track_folder_template, track_folder)))
+        single = known.template_root(out, settings.single_song_template.rpartition("/")[0], {}, sanitize)
+        if kind == "single":
+            roots = [single]
+        elif kind == "playlist":
+            roots = [known.template_root(out, playlist_folder, playlist_values, sanitize)]
+        else:
+            roots = [
+                known.template_root(out, t, {}, sanitize)
+                for t in (settings.album_folder_template, settings.compilation_folder_template,
+                          settings.no_album_folder_template)
+            ]
+            # A template that starts with a variable would mean the whole folder:
+            # use it only when no album template is more specific.
+            roots = [r for r in roots if r != out] or [out]
+        roots = [r for r in roots if not any(o != r and o in r.parents for o in roots)]
+        others = {single, known.template_root(out, settings.playlist_track_folder_template, {}, sanitize), out / "Imports"}
+        return [(r, {o for o in others if r in o.parents}) for r in roots]
+
+    async def _known_file(self, ctx: dict, settings, base, kind: str, song_id: str, playlist_tags=None) -> dict | None:
+        """A file of this song already saved where this job would save it."""
+        if settings.overwrite or settings.synced_lyrics_only:
+            return None
+        wanted = {".m4a"} if settings.output_format == "original" else {convert.EXTENSIONS[settings.output_format]}
+        if ".aiff" in wanted:
+            wanted.add(".aif")
+        for root, exclude in self._known_roots(settings, base, kind, playlist_tags):
+            index = ctx["roots"].get(root)
+            if index is None:
+                index = ctx["roots"][root] = await asyncio.to_thread(self.known.scan, root, exclude)
+            for entry in index.get(song_id, []):
+                suffix = Path(entry["path"]).suffix.lower()
+                if (suffix in wanted or (suffix == ".m4a" and _kept_as_m4a(entry, settings.output_format))) \
+                        and os.path.exists(entry["path"]):
+                    return entry
+        return None
+
+    async def _skip_known_link(self, job: Job, session, settings, url_index: int, url: str, ctx: dict) -> bool:
+        """A link to one song that is already saved: skip it without asking Apple."""
+        m = CATALOG_SONG_RE.search(url)
+        if not m:
+            return False
+        song_id = m.group(1) or m.group(2)
+        base = session.downloader.base
+        kind = "single" if base.single_song_template else "album"
+        entry = await self._known_file(ctx, settings, base, kind, song_id)
+        if not entry:
+            return False
+        key = f"{url_index}:{song_id}"
+        job.tracks[key] = Track(
+            key=key, media_id=song_id, index=1, total=None, title=entry.get("title") or song_id,
+            artist=entry.get("artist") or None, kind="songs", status="skipped",
+            message=SKIP_MESSAGES[GamdlDownloaderMediaFileExistsError], path=entry["path"],
+            quality=entry.get("quality"),
+        )
+        ctx["skipped"] += 1
+        return True
+
+    async def _run_url(self, job: Job, session, settings, url_index: int, url: str, ctx: dict | None = None) -> None:
+        ctx = ctx if ctx is not None else {"roots": {}, "skipped": 0, "published": 0.0}
         log = logger.bind(action=f"URL {url_index}/{len(job.urls)}")
         log.info(f'처리 중: "{url}"')
         downloader = session.downloader
@@ -389,6 +515,15 @@ class JobManager:
                 track = None
                 if media_type in TRACK_TYPES and (media.media_id or media.media_metadata):
                     track = self._upsert_track(job, url_index, media, media_type, attributes)
+                    if (
+                        media.partial
+                        and not media.error
+                        and media_type in {"songs", "library-songs"}
+                        and str(media.media_id or "").isdigit()
+                        and await self._skip_known_track(job, item, downloader, settings, track, ctx)
+                    ):
+                        self._publish_now_and_then(job, ctx)
+                        continue
                     if not media.partial:
                         track.status = "downloading"
                     self._publish(job)
@@ -509,6 +644,7 @@ class JobManager:
                             if media_type in {"songs", "library-songs"} and os.path.exists(item.final_path):
                                 track.quality = await convert.audio_quality(item.final_path, settings.ffmpeg_path)
                                 progress.report("finish")
+                                await downloader.song.fill_album(media)
                                 await self._tag_extras(item, settings, log)
                                 if settings.save_motion_cover and not shared_folder:
                                     await self._save_motion(item, settings, log, motion_done)

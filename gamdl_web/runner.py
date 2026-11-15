@@ -58,6 +58,10 @@ MAX_COVER_SIZE = 10000
 # Apple now and then refuses one song's playback request and gives it the
 # next time: wait a little and ask again before calling it an error.
 PLAYBACK_RETRY_WAITS = (3, 8)
+# Account info when a session starts. gamdl asks once, with a 5 s timeout and no
+# retry: with many downloads queued, about one in three failed with "Error
+# fetching account info" and no answer from Apple, and worked when tried again.
+ACCOUNT_INFO_RETRY_WAITS = (2, 5, 10)
 
 
 class WebWrapperApi(WrapperApi):
@@ -75,6 +79,18 @@ class WebWrapperApi(WrapperApi):
 
 class WebAppleMusicApi(AppleMusicApi):
     """Keeps library songs linked to the catalog past the first page."""
+
+    @staticmethod
+    async def get_account_info(token: str, media_user_token: str, meta: str = "subscription") -> dict:
+        for wait in (*ACCOUNT_INFO_RETRY_WAITS, None):
+            try:
+                return await AppleMusicApi.get_account_info(token, media_user_token, meta)
+            except GamdlApiResponseError as e:
+                # 401/403 is Apple saying no; no answer or a busy server is worth another try.
+                if wait is None or e.status_code in (401, 403):
+                    raise
+                logger.info(f"Apple 계정 정보를 받지 못해 {wait}초 뒤 다시 요청합니다")
+                await asyncio.sleep(wait)
 
     async def get_extended_api_data(self, next_uri: str | None, href_uri: str) -> dict:
         # A library playlist's "next" link drops include=catalog, so songs past
@@ -353,14 +369,32 @@ def _catalog_link(library: dict) -> list:
     return (((library.get("relationships") or {}).get("catalog")) or {}).get("data") or []
 
 
+# Library song ID -> (when, catalog twin or None). The search is paced and can be
+# throttled, so a playlist downloaded again doesn't wait on it for every such song.
+_twin_cache: dict[str, tuple[float, dict | None]] = {}
+TWIN_CACHE_SECS = 24 * 3600
+
+
 async def _catalog_twin(api: AppleMusicApi, library: dict) -> dict | None:
+    key = str(library.get("id") or "")
+    cached = _twin_cache.get(key)
+    if key and cached and time.time() - cached[0] < TWIN_CACHE_SECS:
+        return cached[1]
+    twin, settled = await _find_catalog_twin(api, library)
+    if key and settled:
+        _twin_cache[key] = (time.time(), twin)
+    return twin
+
+
+async def _find_catalog_twin(api: AppleMusicApi, library: dict) -> tuple[dict | None, bool]:
+    """The twin, and whether that answer is settled (not cut short by an error)."""
     # Imported here: importer imports search, which imports this module.
     from .importer import _base_title, score
 
     a = library.get("attributes") or {}
     length = a.get("durationInMillis")
     if not (a.get("playParams") or {}).get("catalogId") or not a.get("name") or not length:
-        return None  # the user's own upload: its library copy is the real one
+        return None, True  # the user's own upload: its library copy is the real one
     results = None
     for wait in (0, 5, 15, 40):
         await asyncio.sleep(max(wait, _twin_pace["next"] - time.monotonic()))
@@ -370,7 +404,9 @@ async def _catalog_twin(api: AppleMusicApi, library: dict) -> dict | None:
             break
         except GamdlApiResponseError as e:
             if e.status_code != 429:
-                return None
+                return None, False
+    if results is None:
+        return None, False
     best = None
     for song in ((results or {}).get("results", {}).get("songs", {}).get("data") or []):
         c = song.get("attributes") or {}
@@ -384,13 +420,33 @@ async def _catalog_twin(api: AppleMusicApi, library: dict) -> dict | None:
         ):
             best = (drift, song["id"])
     if best is None:
-        return None
-    return (await api.get_song(best[1]))["data"][0]
+        return None, True
+    return (await api.get_song(best[1]))["data"][0], True
 
 
 class WebSongInterface(AppleMusicSongInterface):
     """Library songs come from the catalog whenever it has them; the rest only
     when Apple offers them unencrypted (the user's own uploads)."""
+
+    # Off for playback caching (StreamService), which writes no tags.
+    localize_tags = True
+
+    async def _localize_tags(self, media) -> None:
+        """Tags in the metadata language from Settings. The wrapper's playback info
+        is always in the account store's own language (English in an Australian
+        store, even with ko-KR set); the web player's answers in the language asked
+        for, e.g. "좋은 날 / 아이유" for "Good Day / IU"."""
+        try:
+            webplayback = await self.base.apple_music_api.get_webplayback(media.media_id, False)
+            metadata = webplayback["songList"][0]["assets"][0]["metadata"]
+            media.tags = await self.base.get_tags_from_asset_info(
+                metadata,
+                media.lyrics.unsynced if media.lyrics else None,
+                self.use_album_date,
+            )
+        except Exception as e:
+            # The wrapper's tags are fine, just in the store's language.
+            logger.debug("localized_tags_failed", media_id=media.media_id, error=str(e))
 
     async def get_media(self, media):
         api = self.base.apple_music_api
@@ -408,8 +464,23 @@ class WebSongInterface(AppleMusicSongInterface):
                     a = media.media_metadata.get("attributes") or {}
                     logger.info(f'보관함 곡을 카탈로그에서 다시 찾았습니다: "{a.get("artistName")} - {a.get("name")}"')
                     media.media_id, media.is_library, media.media_metadata = twin["id"], False, twin
-        async for item in super().get_media(media):
-            yield item
+        songs = super().get_media(media)
+        try:
+            async for item in songs:
+                if (
+                    self.localize_tags
+                    and self.base.wrapper_api
+                    and not item.partial
+                    and not item.is_library
+                    and item.tags
+                ):
+                    await self._localize_tags(item)
+                yield item
+                # The job found this song already saved: nothing more to ask Apple.
+                if getattr(item, "known_path", None):
+                    return
+        finally:
+            await songs.aclose()
 
     async def _get_library_stream_info(self, webplayback):
         stream_info = await super()._get_library_stream_info(webplayback)
@@ -429,9 +500,27 @@ async def _fix_audio_timing(path: str) -> None:
 
 
 class WebSongDownloader(AppleMusicSongDownloader):
+    def _names_need_album(self) -> bool:
+        templates = [getattr(self.base, attr) or "" for attr in self.base._TEMPLATE_ATTRS]
+        templates += [self.base.playlist_track_template or "", self.base.single_song_template or ""]
+        return any(v in t.lower() for t in templates for v in ("%label%", "%upc%"))
+
     async def get_download_item(self, media):
-        # Songs listed in an album or playlist come without their album: fetch
-        # it so %label%, %upc%, the label/UPC tags and the motion cover have it.
+        # Only when the name needs it: a song that's already saved is skipped
+        # right after this, and the job fills the album in before tagging.
+        if self._names_need_album():
+            await self.fill_album(media)
+        # get_final_path runs before the first await in here, so this can't
+        # leak into another song's name.
+        self.base.current_media = media
+        try:
+            return await super().get_download_item(media)
+        finally:
+            self.base.current_media = None
+
+    async def fill_album(self, media) -> None:
+        """Songs listed in an album or playlist come without their album: fetch
+        it (cached) for %label%, %upc%, the label/UPC tags and the motion cover."""
         album_id = getattr(media.tags, "album_id", None)
         relationships = (media.media_metadata or {}).get("relationships") or {}
         if album_id and media.media_metadata and not (relationships.get("albums") or {}).get("data"):
@@ -442,13 +531,6 @@ class WebSongDownloader(AppleMusicSongDownloader):
             else:
                 if album:
                     media.media_metadata["relationships"] = {**relationships, "albums": {"data": [album]}}
-        # get_final_path runs before the first await in here, so this can't
-        # leak into another song's name.
-        self.base.current_media = media
-        try:
-            return await super().get_download_item(media)
-        finally:
-            self.base.current_media = None
 
     async def stage(self, encrypted_path, staged_path, *args, **kwargs):
         progress.report("decrypt")

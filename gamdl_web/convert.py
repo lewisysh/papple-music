@@ -316,8 +316,14 @@ def _probe_tags(path: str) -> dict:
     if audio is None:
         raise ConvertError(f"unknown audio format: {path}")
     info = audio.info
+    bits = getattr(info, "bits_per_sample", 0) or 16
     if isinstance(audio, FLAC):
         codec = "flac"
+    elif isinstance(audio, (AIFF, WAVE)):
+        # PCM, as ffprobe names it (AIFF is big-endian, WAV little-endian).
+        codec = f"pcm_s{24 if bits > 16 else 16}{'be' if isinstance(audio, AIFF) else 'le'}"
+    elif isinstance(audio, MP3):
+        codec = "mp3"
     else:
         raw = (getattr(info, "codec", "") or "").lower()
         codec = MP4_CODECS.get(raw, "aac" if raw.startswith("mp4a") else raw or "unknown")
@@ -359,6 +365,11 @@ async def audio_quality(path: str, ffmpeg: str = "ffmpeg") -> dict | None:
     # Without ffprobe mutagen reads the file, and a truncated one raises its own errors.
     except (ConvertError, OSError, ValueError, mutagen.MutagenError):
         return None
+    return quality_from_info(info)
+
+
+def quality_from_info(info: dict) -> dict:
+    """The Downloads page's quality from ffprobe-style stream info."""
 
     def number(key: str) -> int | None:
         try:

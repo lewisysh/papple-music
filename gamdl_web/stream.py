@@ -105,6 +105,7 @@ class StreamService:
     async def _build_session(self, quality: str) -> Session:
         session = await create_session(self._settings(quality), WebPrompts(None, "stream"))
         session.downloader.base.skip_tags = True
+        session.downloader.base.interface.song.localize_tags = False
         old, _ = self._sessions.get(quality, (None, 0.0))
         self._sessions[quality] = (session, time.time())
         if old:
